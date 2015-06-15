@@ -19,3 +19,21 @@ pub fn xxhash64(input: &[u8], length: u64) -> u64 {
         XXH64(&input[0] as *const _ as *const libc::c_void, length, SEED as u64)
     }
 }
+
+#[test]
+fn xxhash32_test() {
+    let string = "hello world";
+
+    assert_eq!(
+        xxhash32(string.as_bytes(), string.len() as u64),
+        4225033588);
+}
+
+#[test]
+fn xxhash64_test() {
+    let string = "hello world";
+
+    assert_eq!(
+        xxhash64(string.as_bytes(), string.len() as u64),
+        7620854247404556961);
+}
