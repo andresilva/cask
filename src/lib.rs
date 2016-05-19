@@ -8,7 +8,7 @@ use std::vec::Vec;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use crc::crc32;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct Entry<'a> {
     key: &'a[u8],
     value: &'a[u8],
@@ -86,7 +86,33 @@ impl<'a> Entry<'a> {
 
 #[cfg(test)]
 mod tests {
+    use Entry;
+
     #[test]
-    fn it_works() {
+    fn test_serialization() {
+        let key = [0, 0, 0];
+        let value = [0, 0, 0];
+        let entry = Entry::new(&key, &value);
+
+        assert_eq!(entry, Entry::from_bytes(&entry.to_bytes()));
+        assert_eq!(entry.deleted(), Entry::from_bytes(&entry.deleted().to_bytes()));
+
+        let empty_entry = Entry::new(&key, &[]);
+
+        assert_eq!(empty_entry, Entry::from_bytes(&empty_entry.to_bytes()));
+        assert_eq!(empty_entry.deleted(), Entry::from_bytes(&empty_entry.deleted().to_bytes()));
+
+        assert!(Entry::from_bytes(&empty_entry.deleted().to_bytes()).deleted);
+        assert!(empty_entry.deleted().deleted);
+    }
+
+    #[test]
+    fn test_deleted() {
+        let key = [0, 0, 0];
+        let value = [0, 0, 0];
+        let entry = Entry::new(&key, &value);
+
+        assert!(entry.deleted().deleted);
+        assert_eq!(entry.deleted().value.len(), 0);
     }
 }
