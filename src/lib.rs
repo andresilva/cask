@@ -7,13 +7,12 @@ use std::vec::Vec;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use crc::crc32;
-use time::Timespec;
 
 #[derive(Debug)]
 pub struct Entry<'a> {
     key: &'a[u8],
     value: &'a[u8],
-    timestamp: Timespec,
+    timestamp: u32,
     deleted: bool,
 }
 
@@ -26,7 +25,7 @@ impl<'a> Entry<'a> {
         Entry {
             key: key,
             value: value,
-            timestamp: time::now().to_timespec(),
+            timestamp: time::now().to_timespec().sec as u32,
             deleted: false,
         }
     }
@@ -35,7 +34,7 @@ impl<'a> Entry<'a> {
         Entry {
             key: self.key,
             value: &[],
-            timestamp: time::now().to_timespec(),
+            timestamp: time::now().to_timespec().sec as u32,
             deleted: true,
         }
     }
@@ -47,7 +46,7 @@ impl<'a> Entry<'a> {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut cursor = Cursor::new(Vec::with_capacity(self.size()));
         cursor.set_position(4);
-        cursor.write_u32::<LittleEndian>(self.timestamp.sec as u32).unwrap();
+        cursor.write_u32::<LittleEndian>(self.timestamp).unwrap();
         cursor.write_u16::<LittleEndian>(self.key.len() as u16).unwrap();
 
         if self.deleted {
@@ -79,7 +78,7 @@ impl<'a> Entry<'a> {
         Entry {
             key: &bytes[STATIC_SIZE..STATIC_SIZE + key_size as usize],
             value: &bytes[STATIC_SIZE + key_size as usize..],
-            timestamp: Timespec::new(timestamp as i64, 0),
+            timestamp: timestamp,
             deleted: value_size == TOMBSTONE
         }
     }
