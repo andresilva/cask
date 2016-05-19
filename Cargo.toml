@@ -4,3 +4,6 @@ version = "0.1.0"
 authors = ["Andre Silva"]
 
 [dependencies]
+byteorder = "0.5.1"
+crc = "1.2.0"
+time = "0.1.35"
