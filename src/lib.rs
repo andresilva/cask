@@ -2,8 +2,8 @@ extern crate byteorder;
 extern crate crc;
 extern crate time;
 
-use std::io::{Cursor, Write};
 use std::borrow::Cow;
+use std::io::{Cursor, Read, Write};
 use std::vec::Vec;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -21,7 +21,10 @@ const STATIC_SIZE: usize = 14; // crc(4) + timestamp(4) + key_size(2) + value_si
 const TOMBSTONE: u32 = !0;
 
 impl<'a> Entry<'a> {
-    pub fn new<K, V>(key: K, value: V) -> Entry<'a> where Cow<'a, [u8]>: From<K>, Cow<'a, [u8]>: From<V> {
+    pub fn new<K, V>(key: K, value: V) -> Entry<'a>
+        where Cow<'a, [u8]>: From<K>,
+              Cow<'a, [u8]>: From<V>
+    {
         let v = Cow::from(value);
         assert!(v.len() < TOMBSTONE as usize);
 
@@ -54,11 +57,11 @@ impl<'a> Entry<'a> {
 
         if self.deleted {
             cursor.write_u32::<LittleEndian>(TOMBSTONE).unwrap();
-            cursor.write(&self.key).unwrap();
+            cursor.write_all(&self.key).unwrap();
         } else {
             cursor.write_u32::<LittleEndian>(self.value.len() as u32).unwrap();
-            cursor.write(&self.key).unwrap();
-            cursor.write(&self.value).unwrap();
+            cursor.write_all(&self.key).unwrap();
+            cursor.write_all(&self.value).unwrap();
         }
 
         let checksum = crc32::checksum_ieee(&cursor.get_ref()[4..]);
@@ -85,10 +88,57 @@ impl<'a> Entry<'a> {
             deleted: value_size == TOMBSTONE,
         }
     }
+
+    pub fn from_read<R: Read>(reader: &mut R) -> Entry<'a> {
+        let mut header = vec![0u8; STATIC_SIZE as usize];
+        reader.read(&mut header).unwrap();
+
+        let mut cursor = Cursor::new(header);
+        let checksum = cursor.read_u32::<LittleEndian>().unwrap();
+        let timestamp = cursor.read_u32::<LittleEndian>().unwrap();
+        let key_size = cursor.read_u16::<LittleEndian>().unwrap();
+        let value_size = cursor.read_u32::<LittleEndian>().unwrap();
+
+        let mut key = vec![0u8; key_size as usize];
+        reader.read_exact(&mut key).unwrap();
+
+        let deleted = value_size == TOMBSTONE;
+
+        let value = if deleted {
+            let empty: &[u8] = &[];
+            Cow::from(empty)
+        } else {
+            let mut value = vec![0u8; value_size as usize];
+            reader.read_exact(&mut value).unwrap();
+            Cow::from(value)
+        };
+
+        let crc = {
+            // unfortunately I had to inline the checksum code since it only accepts slices as
+            // arguments (and I wanted to keep the iterator to avoid needless copying)
+            let mut v: u32 = !0;
+            let t = &crc32::IEEE_TABLE;
+            for i in cursor.get_ref()[4..].iter().chain(key.iter().chain(value.iter())) {
+                v = t[((v as u8) ^ i) as usize] ^ (v >> 8)
+            }
+            !v
+        };
+
+        assert_eq!(crc, checksum);
+
+        Entry {
+            key: Cow::from(key),
+            value: Cow::from(value),
+            timestamp: timestamp,
+            deleted: deleted,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
+
     use Entry;
 
     #[test]
@@ -97,16 +147,25 @@ mod tests {
         let value: &[u8] = &[0, 0, 0];
         let entry = Entry::new(key, value);
 
+        assert_eq!(entry.to_bytes().len(), 20);
         assert_eq!(entry, Entry::from_bytes(&entry.to_bytes()));
+        assert_eq!(entry, Entry::from_read(&mut Cursor::new(entry.to_bytes())));
         assert_eq!(entry.deleted(),
                    Entry::from_bytes(&entry.deleted().to_bytes()));
+        assert_eq!(entry.deleted(),
+                   Entry::from_read(&mut Cursor::new(entry.deleted().to_bytes())));
 
         let empty_entry = Entry::new(key, vec![]);
         assert_eq!(empty_entry, Entry::from_bytes(&empty_entry.to_bytes()));
+        assert_eq!(empty_entry,
+                   Entry::from_read(&mut Cursor::new(&empty_entry.to_bytes())));
         assert_eq!(empty_entry.deleted(),
                    Entry::from_bytes(&empty_entry.deleted().to_bytes()));
+        assert_eq!(empty_entry.deleted(),
+                   Entry::from_read(&mut Cursor::new(&empty_entry.deleted().to_bytes())));
 
         assert!(Entry::from_bytes(&empty_entry.deleted().to_bytes()).deleted);
+        assert!(Entry::from_read(&mut Cursor::new(&empty_entry.deleted().to_bytes())).deleted);
         assert!(empty_entry.deleted().deleted);
     }
 
