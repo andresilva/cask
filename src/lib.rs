@@ -21,22 +21,16 @@ const STATIC_SIZE: usize = 14; // crc(4) + timestamp(4) + key_size(2) + value_si
 const TOMBSTONE: u32 = !0;
 
 impl<'a> Entry<'a> {
-    pub fn new(key: Cow<'a, [u8]>, value: Cow<'a, [u8]>) -> Entry<'a> {
-        assert!(value.len() < TOMBSTONE as usize);
+    pub fn new<K, V>(key: K, value: V) -> Entry<'a> where Cow<'a, [u8]>: From<K>, Cow<'a, [u8]>: From<V> {
+        let v = Cow::from(value);
+        assert!(v.len() < TOMBSTONE as usize);
+
         Entry {
-            key: key,
-            value: value,
+            key: Cow::from(key),
+            value: v,
             timestamp: time::now().to_timespec().sec as u32,
             deleted: false,
         }
-    }
-
-    pub fn borrowed(key: &'a [u8], value: &'a [u8]) -> Entry<'a> {
-        Entry::new(Cow::from(key), Cow::from(value))
-    }
-
-    pub fn owned(key: Vec<u8>, value: Vec<u8>) -> Entry<'a> {
-        Entry::new(Cow::from(key), Cow::from(value))
     }
 
     pub fn deleted(&self) -> Entry<'a> {
@@ -99,16 +93,15 @@ mod tests {
 
     #[test]
     fn test_serialization() {
-        let key = [0, 0, 0];
-        let value = [0, 0, 0];
-        let entry = Entry::borrowed(&key, &value);
+        let key: &[u8] = &[0, 0, 0];
+        let value: &[u8] = &[0, 0, 0];
+        let entry = Entry::new(key, value);
 
         assert_eq!(entry, Entry::from_bytes(&entry.to_bytes()));
         assert_eq!(entry.deleted(),
                    Entry::from_bytes(&entry.deleted().to_bytes()));
 
-        let empty_entry = Entry::borrowed(&key, &[]);
-
+        let empty_entry = Entry::new(key, vec![]);
         assert_eq!(empty_entry, Entry::from_bytes(&empty_entry.to_bytes()));
         assert_eq!(empty_entry.deleted(),
                    Entry::from_bytes(&empty_entry.deleted().to_bytes()));
@@ -119,9 +112,9 @@ mod tests {
 
     #[test]
     fn test_deleted() {
-        let key = [0, 0, 0];
-        let value = [0, 0, 0];
-        let entry = Entry::borrowed(&key, &value);
+        let key: &[u8] = &[0, 0, 0];
+        let value: &[u8] = &[0, 0, 0];
+        let entry = Entry::new(key, value);
 
         assert!(entry.deleted().deleted);
         assert_eq!(entry.deleted().value.len(), 0);
