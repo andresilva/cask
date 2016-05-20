@@ -3,6 +3,7 @@ extern crate crc;
 extern crate time;
 
 use std::io::{Cursor, Write};
+use std::borrow::Cow;
 use std::vec::Vec;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -10,8 +11,8 @@ use crc::crc32;
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Entry<'a> {
-    key: &'a[u8],
-    value: &'a[u8],
+    key: Cow<'a, [u8]>,
+    value: Cow<'a, [u8]>,
     timestamp: u32,
     deleted: bool,
 }
@@ -20,7 +21,7 @@ const STATIC_SIZE: usize = 14; // crc(4) + timestamp(4) + key_size(2) + value_si
 const TOMBSTONE: u32 = !0;
 
 impl<'a> Entry<'a> {
-    pub fn new(key: &'a [u8], value: &'a [u8]) -> Entry<'a> {
+    pub fn new(key: Cow<'a, [u8]>, value: Cow<'a, [u8]>) -> Entry<'a> {
         assert!(value.len() < TOMBSTONE as usize);
         Entry {
             key: key,
@@ -30,10 +31,18 @@ impl<'a> Entry<'a> {
         }
     }
 
+    pub fn borrowed(key: &'a [u8], value: &'a [u8]) -> Entry<'a> {
+        Entry::new(Cow::from(key), Cow::from(value))
+    }
+
+    pub fn owned(key: Vec<u8>, value: Vec<u8>) -> Entry<'a> {
+        Entry::new(Cow::from(key), Cow::from(value))
+    }
+
     pub fn deleted(&self) -> Entry<'a> {
         Entry {
-            key: self.key,
-            value: &[],
+            key: self.key.clone(),
+            value: Cow::Borrowed(&[]),
             timestamp: time::now().to_timespec().sec as u32,
             deleted: true,
         }
@@ -76,10 +85,10 @@ impl<'a> Entry<'a> {
         let value_size = cursor.read_u32::<LittleEndian>().unwrap();
 
         Entry {
-            key: &bytes[STATIC_SIZE..STATIC_SIZE + key_size as usize],
-            value: &bytes[STATIC_SIZE + key_size as usize..],
+            key: Cow::from(&bytes[STATIC_SIZE..STATIC_SIZE + key_size as usize]),
+            value: Cow::from(&bytes[STATIC_SIZE + key_size as usize..]),
             timestamp: timestamp,
-            deleted: value_size == TOMBSTONE
+            deleted: value_size == TOMBSTONE,
         }
     }
 }
@@ -92,15 +101,17 @@ mod tests {
     fn test_serialization() {
         let key = [0, 0, 0];
         let value = [0, 0, 0];
-        let entry = Entry::new(&key, &value);
+        let entry = Entry::borrowed(&key, &value);
 
         assert_eq!(entry, Entry::from_bytes(&entry.to_bytes()));
-        assert_eq!(entry.deleted(), Entry::from_bytes(&entry.deleted().to_bytes()));
+        assert_eq!(entry.deleted(),
+                   Entry::from_bytes(&entry.deleted().to_bytes()));
 
-        let empty_entry = Entry::new(&key, &[]);
+        let empty_entry = Entry::borrowed(&key, &[]);
 
         assert_eq!(empty_entry, Entry::from_bytes(&empty_entry.to_bytes()));
-        assert_eq!(empty_entry.deleted(), Entry::from_bytes(&empty_entry.deleted().to_bytes()));
+        assert_eq!(empty_entry.deleted(),
+                   Entry::from_bytes(&empty_entry.deleted().to_bytes()));
 
         assert!(Entry::from_bytes(&empty_entry.deleted().to_bytes()).deleted);
         assert!(empty_entry.deleted().deleted);
@@ -110,7 +121,7 @@ mod tests {
     fn test_deleted() {
         let key = [0, 0, 0];
         let value = [0, 0, 0];
-        let entry = Entry::new(&key, &value);
+        let entry = Entry::borrowed(&key, &value);
 
         assert!(entry.deleted().deleted);
         assert_eq!(entry.deleted().value.len(), 0);
