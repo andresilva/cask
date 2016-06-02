@@ -71,6 +71,40 @@ impl<'a> Entry<'a> {
         cursor.into_inner()
     }
 
+    pub fn write_bytes<W: Write>(&self, writer: &mut W) {
+        let mut cursor = Cursor::new(Vec::with_capacity(STATIC_SIZE));
+        cursor.set_position(4);
+        cursor.write_u32::<LittleEndian>(self.timestamp).unwrap();
+        cursor.write_u16::<LittleEndian>(self.key.len() as u16).unwrap();
+
+        if self.deleted {
+            cursor.write_u32::<LittleEndian>(TOMBSTONE).unwrap();
+        } else {
+            cursor.write_u32::<LittleEndian>(self.value.len() as u32).unwrap();
+        }
+
+        let checksum = {
+            // unfortunately I had to inline the checksum code since it only accepts slices as
+            // arguments (and I wanted to keep the iterator to avoid needless copying)
+            let mut v: u32 = !0;
+            let t = &crc32::IEEE_TABLE;
+            for i in cursor.get_ref()[4..].iter().chain(self.key.iter().chain(self.value.iter())) {
+                v = t[((v as u8) ^ i) as usize] ^ (v >> 8)
+            }
+            !v
+        };
+
+        cursor.set_position(0);
+        cursor.write_u32::<LittleEndian>(checksum).unwrap();
+
+        writer.write_all(&cursor.into_inner()).unwrap();
+        writer.write_all(&self.key).unwrap();
+
+        if !self.deleted {
+            writer.write_all(&self.value).unwrap();
+        }
+    }
+
     pub fn from_bytes(bytes: &'a [u8]) -> Entry<'a> {
         let mut cursor = Cursor::new(bytes);
 
@@ -148,24 +182,40 @@ mod tests {
         let entry = Entry::new(key, value);
 
         assert_eq!(entry.to_bytes().len(), 20);
+
         assert_eq!(entry, Entry::from_bytes(&entry.to_bytes()));
         assert_eq!(entry, Entry::from_read(&mut Cursor::new(entry.to_bytes())));
+        let mut v = Vec::new();
+        entry.write_bytes(&mut v);
+        assert_eq!(entry, Entry::from_bytes(&v));
+
         assert_eq!(entry.deleted(),
                    Entry::from_bytes(&entry.deleted().to_bytes()));
         assert_eq!(entry.deleted(),
                    Entry::from_read(&mut Cursor::new(entry.deleted().to_bytes())));
+        v.clear();
+        entry.deleted().write_bytes(&mut v);
+        assert_eq!(entry.deleted(), Entry::from_bytes(&v));
 
         let empty_entry = Entry::new(key, vec![]);
         assert_eq!(empty_entry, Entry::from_bytes(&empty_entry.to_bytes()));
         assert_eq!(empty_entry,
                    Entry::from_read(&mut Cursor::new(&empty_entry.to_bytes())));
+        v.clear();
+        empty_entry.write_bytes(&mut v);
+        assert_eq!(empty_entry, Entry::from_bytes(&v));
+
         assert_eq!(empty_entry.deleted(),
                    Entry::from_bytes(&empty_entry.deleted().to_bytes()));
         assert_eq!(empty_entry.deleted(),
                    Entry::from_read(&mut Cursor::new(&empty_entry.deleted().to_bytes())));
+        v.clear();
+        empty_entry.deleted().write_bytes(&mut v);
+        assert_eq!(empty_entry.deleted(), Entry::from_bytes(&v));
 
         assert!(Entry::from_bytes(&empty_entry.deleted().to_bytes()).deleted);
         assert!(Entry::from_read(&mut Cursor::new(&empty_entry.deleted().to_bytes())).deleted);
+        assert!(Entry::from_bytes(&v).deleted);
         assert!(empty_entry.deleted().deleted);
     }
 
