@@ -195,6 +195,7 @@ pub struct Hint<'a> {
     entry_pos: u64,
     value_size: u32,
     timestamp: u32,
+    deleted: bool,
 }
 
 impl<'a> Hint<'a> {
@@ -204,6 +205,7 @@ impl<'a> Hint<'a> {
             entry_pos: entry_pos,
             value_size: e.value.len() as u32,
             timestamp: e.timestamp,
+            deleted: e.deleted,
         }
     }
 
@@ -237,6 +239,7 @@ impl<'a> Hint<'a> {
             entry_pos: entry_pos,
             value_size: value_size,
             timestamp: timestamp,
+            deleted: value_size == ENTRY_TOMBSTONE,
         }
     }
 }
@@ -333,26 +336,52 @@ impl Cask {
         let data_files = find_data_files(&path);
 
         for file_id in &data_files {
-            let mut file = get_file_handle(&get_data_file_path(&path, *file_id), true);
-            let file_size = file.metadata().unwrap().len();
+            let hint_file_path = get_hint_file_path(&path, *file_id);
 
-            let mut file_pos = 0;
-            while file_pos < file_size {
-                let entry = Entry::from_read(&mut file);
+            if hint_file_path.is_file() {
+                let mut hint_file = get_file_handle(&hint_file_path, false);
+                let hint_file_size = hint_file.metadata().unwrap().len();
 
-                if entry.deleted {
-                    key_dir.remove(&entry.key.into_owned());
-                } else {
-                    let key_entry = KeyEntry {
-                        file_id: *file_id,
-                        entry_pos: file_pos,
-                        entry_size: entry.size(),
-                        timestamp: entry.timestamp,
-                    };
-                    key_dir.insert(entry.key.into_owned(), key_entry);
+                let mut hint_file_pos = 0;
+                while hint_file_pos < hint_file_size {
+                    let hint = Hint::from_read(&mut hint_file);
+
+                    if hint.deleted {
+                        key_dir.remove(&hint.key.into_owned());
+                    } else {
+                        let key_entry = KeyEntry {
+                            file_id: *file_id,
+                            entry_pos: hint.entry_pos,
+                            entry_size: hint.entry_size(),
+                            timestamp: hint.timestamp,
+                        };
+                        key_dir.insert(hint.key.into_owned(), key_entry);
+                    }
+
+                    hint_file_pos = hint_file.seek(SeekFrom::Current(0)).unwrap();
                 }
+            } else {
+                let mut data_file = get_file_handle(&get_data_file_path(&path, *file_id), false);
+                let data_file_size = data_file.metadata().unwrap().len();
 
-                file_pos = file.seek(SeekFrom::Current(0)).unwrap();
+                let mut data_file_pos = 0;
+                while data_file_pos < data_file_size {
+                    let entry = Entry::from_read(&mut data_file);
+
+                    if entry.deleted {
+                        key_dir.remove(&entry.key.into_owned());
+                    } else {
+                        let key_entry = KeyEntry {
+                            file_id: *file_id,
+                            entry_pos: data_file_pos,
+                            entry_size: entry.size(),
+                            timestamp: entry.timestamp,
+                        };
+                        key_dir.insert(entry.key.into_owned(), key_entry);
+                    }
+
+                    data_file_pos = data_file.seek(SeekFrom::Current(0)).unwrap();
+                }
             }
         }
 
@@ -374,13 +403,13 @@ impl Cask {
 
     pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
         self.key_dir.get(key).and_then(|key_entry| {
-            let mut file = get_file_handle(&get_data_file_path(&self.path, key_entry.file_id),
-                                           false);
+            let mut data_file = get_file_handle(&get_data_file_path(&self.path, key_entry.file_id),
+                                                false);
 
-            file.seek(SeekFrom::Start(key_entry.entry_pos)).unwrap();
+            data_file.seek(SeekFrom::Start(key_entry.entry_pos)).unwrap();
 
             let mut entry = vec![0u8; key_entry.entry_size as usize];
-            file.read_exact(&mut entry).unwrap();
+            data_file.read_exact(&mut entry).unwrap();
 
             let entry = Entry::from_bytes(&entry);
 
@@ -435,8 +464,12 @@ impl Cask {
 
     pub fn delete(&mut self, key: &[u8]) {
         if self.key_dir.remove(key).is_some() {
+            let active_data_file_pos = self.active_data_file.seek(SeekFrom::Current(0)).unwrap();
             let entry = Entry::deleted(key);
+            let hint = Hint::new(&entry, active_data_file_pos);
+
             entry.write_bytes(&mut self.active_data_file);
+            hint.write_bytes(&mut self.active_hint_file);
 
             if self.sync {
                 self.active_data_file.sync_data().unwrap();
