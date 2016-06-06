@@ -1,6 +1,9 @@
+#[macro_use]
+extern crate lazy_static;
 extern crate byteorder;
 extern crate crc;
 extern crate fs2;
+extern crate regex;
 extern crate time;
 
 use std::borrow::Cow;
@@ -15,12 +18,15 @@ use std::vec::Vec;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use crc::crc32;
 use fs2::FileExt;
+use regex::Regex;
 
 const ENTRY_STATIC_SIZE: usize = 14; // crc(4) + timestamp(4) + key_size(2) + value_size(4)
 const ENTRY_TOMBSTONE: u32 = !0;
 
 const DATA_FILE_EXTENSION: &'static str = "cask.data";
 const LOCK_FILE_NAME: &'static str = "cask.lock";
+
+const DEFAULT_SIZE_THRESHOLD: usize = 100 * 1024 * 1024;
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Entry<'a> {
@@ -181,6 +187,7 @@ impl<'a> Entry<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct KeyEntry {
     file_id: usize,
     entry_pos: u64,
@@ -197,6 +204,7 @@ pub struct Cask {
     current_file_id: usize,
     active_file: File,
     sync: bool,
+    size_threshold: usize,
 }
 
 fn get_data_file_path(path: &Path, file_id: usize) -> PathBuf {
@@ -220,6 +228,33 @@ fn get_file_handle(path: &Path, write: bool) -> File {
     }
 }
 
+fn find_data_files(path: &Path) -> Vec<usize> {
+    let files = fs::read_dir(path).unwrap();
+
+    lazy_static! {
+            static ref RE: Regex =
+                Regex::new(&format!("(\\d+).{}$", DATA_FILE_EXTENSION)).unwrap();
+        }
+
+    let mut files: Vec<usize> = files.flat_map(|f| {
+            let file = f.unwrap();
+            let file_metadata = file.metadata().unwrap();
+
+            if file_metadata.is_file() {
+                let file_name = file.file_name();
+                let captures = RE.captures(file_name.to_str().unwrap());
+                captures.and_then(|c| c.at(1).and_then(|n| n.parse::<usize>().ok()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    files.sort();
+
+    files
+}
+
 impl Cask {
     pub fn open(path: &str, sync: bool) -> Cask {
         let path = PathBuf::from(path);
@@ -236,37 +271,49 @@ impl Cask {
 
         let mut key_dir = KeyDir::new();
 
-        let current_file_id = 0;
+        let data_files = find_data_files(&path);
 
-        let mut file = get_file_handle(&get_data_file_path(&path, current_file_id), true);
-        let file_size = file.metadata().unwrap().len();
+        for file_id in &data_files {
+            let mut file = get_file_handle(&get_data_file_path(&path, *file_id), true);
+            let file_size = file.metadata().unwrap().len();
 
-        let mut file_pos = 0;
-        while file_pos < file_size {
-            let entry = Entry::from_read(&mut file);
+            let mut file_pos = 0;
+            while file_pos < file_size {
+                let entry = Entry::from_read(&mut file);
 
-            if entry.deleted {
-                key_dir.remove(&entry.key.into_owned());
-            } else {
-                let key_entry = KeyEntry {
-                    file_id: current_file_id,
-                    entry_pos: file_pos,
-                    entry_size: entry.size(),
-                    timestamp: entry.timestamp,
-                };
-                key_dir.insert(entry.key.into_owned(), key_entry);
+                if entry.deleted {
+                    key_dir.remove(&entry.key.into_owned());
+                } else {
+                    let key_entry = KeyEntry {
+                        file_id: *file_id,
+                        entry_pos: file_pos,
+                        entry_size: entry.size(),
+                        timestamp: entry.timestamp,
+                    };
+                    key_dir.insert(entry.key.into_owned(), key_entry);
+                }
+
+                file_pos = file.seek(SeekFrom::Current(0)).unwrap();
             }
-
-            file_pos = file.seek(SeekFrom::Current(0)).unwrap();
         }
+
+        let current_file_id = if data_files.is_empty() {
+            0
+        } else {
+            data_files[data_files.len() - 1]
+        };
+
+        let mut active_file = get_file_handle(&get_data_file_path(&path, current_file_id), true);
+        active_file.seek(SeekFrom::End(0)).unwrap();
 
         Cask {
             path: path,
             key_dir: key_dir,
             lock_file: lock_file,
             current_file_id: current_file_id,
-            active_file: file,
+            active_file: active_file,
             sync: sync,
+            size_threshold: DEFAULT_SIZE_THRESHOLD,
         }
     }
 
@@ -293,7 +340,18 @@ impl Cask {
     pub fn put(&mut self, key: Vec<u8>, value: &[u8]) {
         let key_entry = {
             let entry = Entry::new(&*key, value);
-            let active_file_pos = self.active_file.seek(SeekFrom::Current(0)).unwrap();
+            let mut active_file_pos = self.active_file.seek(SeekFrom::Current(0)).unwrap();
+
+            if active_file_pos + entry.size() > self.size_threshold as u64 {
+                if self.sync {
+                    self.active_file.sync_data().unwrap();
+                }
+                self.current_file_id += 1;
+                self.active_file =
+                    get_file_handle(&get_data_file_path(&self.path, self.current_file_id), true);
+
+                active_file_pos = 0
+            }
 
             entry.write_bytes(&mut self.active_file);
 
