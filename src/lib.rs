@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::vec::Vec;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use crc::crc32;
+use crc::{crc32, Hasher32};
 use fs2::FileExt;
 use regex::Regex;
 
@@ -105,14 +105,11 @@ impl<'a> Entry<'a> {
         }
 
         let checksum = {
-            // unfortunately I had to inline the checksum code since it only accepts slices as
-            // arguments (and I wanted to keep the iterator to avoid needless copying)
-            let mut v: u32 = !0;
-            let t = &crc32::IEEE_TABLE;
-            for i in cursor.get_ref()[4..].iter().chain(self.key.iter().chain(self.value.iter())) {
-                v = t[((v as u8) ^ i) as usize] ^ (v >> 8)
-            }
-            !v
+            let mut digest = crc32::Digest::new(crc32::IEEE);
+            digest.write(&cursor.get_ref()[4..]);
+            digest.write(&self.key);
+            digest.write(&self.value);
+            digest.sum32()
         };
 
         cursor.set_position(0);
@@ -169,14 +166,11 @@ impl<'a> Entry<'a> {
         };
 
         let crc = {
-            // unfortunately I had to inline the checksum code since it only accepts slices as
-            // arguments (and I wanted to keep the iterator to avoid needless copying)
-            let mut v: u32 = !0;
-            let t = &crc32::IEEE_TABLE;
-            for i in cursor.get_ref()[4..].iter().chain(key.iter().chain(value.iter())) {
-                v = t[((v as u8) ^ i) as usize] ^ (v >> 8)
-            }
-            !v
+            let mut digest = crc32::Digest::new(crc32::IEEE);
+            digest.write(&cursor.get_ref()[4..]);
+            digest.write(&key);
+            digest.write(&value);
+            digest.sum32()
         };
 
         assert_eq!(crc, checksum);
