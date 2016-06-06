@@ -362,11 +362,17 @@ impl Cask {
                 }
             } else {
                 let mut data_file = get_file_handle(&get_data_file_path(&path, *file_id), false);
+                let mut hint_file = get_file_handle(&hint_file_path, true);
                 let data_file_size = data_file.metadata().unwrap().len();
 
                 let mut data_file_pos = 0;
                 while data_file_pos < data_file_size {
                     let entry = Entry::from_read(&mut data_file);
+
+                    {
+                        let hint = Hint::new(&entry, data_file_pos);
+                        hint.write_bytes(&mut hint_file);
+                    }
 
                     if entry.deleted {
                         key_dir.remove(&entry.key.into_owned());
