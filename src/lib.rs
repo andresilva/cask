@@ -1,5 +1,6 @@
 extern crate byteorder;
 extern crate crc;
+extern crate fs2;
 extern crate time;
 
 use std::borrow::Cow;
@@ -13,11 +14,13 @@ use std::vec::Vec;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use crc::crc32;
+use fs2::FileExt;
 
 const ENTRY_STATIC_SIZE: usize = 14; // crc(4) + timestamp(4) + key_size(2) + value_size(4)
 const ENTRY_TOMBSTONE: u32 = !0;
 
 const DATA_FILE_EXTENSION: &'static str = "cask.data";
+const LOCK_FILE_NAME: &'static str = "cask.lock";
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Entry<'a> {
@@ -190,6 +193,7 @@ pub type KeyDir = HashMap<Vec<u8>, KeyEntry>;
 pub struct Cask {
     path: PathBuf,
     key_dir: KeyDir,
+    lock_file: File,
     current_file_id: usize,
     active_file: File,
     sync: bool,
@@ -226,6 +230,10 @@ impl Cask {
             fs::create_dir(&path).unwrap();
         }
 
+        let lock_file = File::create(path.join(LOCK_FILE_NAME)).unwrap();
+
+        lock_file.try_lock_exclusive().unwrap();
+
         let mut key_dir = KeyDir::new();
 
         let current_file_id = 0;
@@ -255,6 +263,7 @@ impl Cask {
         Cask {
             path: path,
             key_dir: key_dir,
+            lock_file: lock_file,
             current_file_id: current_file_id,
             active_file: file,
             sync: sync,

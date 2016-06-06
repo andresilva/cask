@@ -6,4 +6,5 @@ authors = ["Andre Silva"]
 [dependencies]
 byteorder = "0.5.1"
 crc = "1.2.0"
+fs2 = "0.2.4"
 time = "0.1.35"
