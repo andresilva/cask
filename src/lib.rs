@@ -297,14 +297,8 @@ impl Cask {
             }
         }
 
-        let current_file_id = if data_files.is_empty() {
-            time::now().to_timespec().sec as u32
-        } else {
-            data_files[data_files.len() - 1]
-        };
-
-        let mut active_file = get_file_handle(&get_data_file_path(&path, current_file_id), true);
-        active_file.seek(SeekFrom::End(0)).unwrap();
+        let current_file_id = time::now().to_timespec().sec as u32;
+        let active_file = get_file_handle(&get_data_file_path(&path, current_file_id), true);
 
         Cask {
             path: path,
