@@ -1,18 +1,11 @@
 extern crate cask;
 
-use cask::key_dir::KeyDir;
+use cask::Cask;
 
 fn main() {
-    let name = "test";
-
-    let mut keydir = KeyDir::new(name);
-
-    keydir.set("hello", "world".as_bytes());
-    keydir.set("foo", "bar".as_bytes());
-    keydir.set("grumpy", "cat".as_bytes());
-
-    keydir = KeyDir::open(name);
-    println!("{}", String::from_utf8(keydir.get("hello").unwrap()).unwrap());
-    println!("{}", String::from_utf8(keydir.get("foo").unwrap()).unwrap());
-    println!("{}", String::from_utf8(keydir.get("grumpy").unwrap()).unwrap());
+    let mut cask = Cask::open("test.db", true);
+    cask.put("hello".as_bytes(), "world".as_bytes());
+    println!("{:?}", cask.get("hello".as_bytes()));
+    cask.delete("hello".as_bytes());
+    println!("{:?}", cask.get("hello".as_bytes()));
 }
