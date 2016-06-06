@@ -185,7 +185,15 @@ pub struct KeyEntry {
     timestamp: u32,
 }
 
-pub type KeyDir<'a> = HashMap<Cow<'a, [u8]>, KeyEntry>;
+pub type KeyDir = HashMap<Vec<u8>, KeyEntry>;
+
+pub struct Cask {
+    path: PathBuf,
+    key_dir: KeyDir,
+    current_file_id: usize,
+    active_file: File,
+    sync: bool,
+}
 
 fn get_data_file_path(path: &Path, file_id: usize) -> PathBuf {
     path.join(file_id.to_string()).with_extension(DATA_FILE_EXTENSION)
@@ -208,29 +216,21 @@ fn get_file_handle(path: &Path, write: bool) -> File {
     }
 }
 
-pub struct Cask<'a> {
-    path: &'a Path,
-    key_dir: KeyDir<'a>,
-    current_file_id: usize,
-    active_file: File,
-    sync: bool,
-}
-
-impl<'a> Cask<'a> {
-    pub fn open(path: &'a str, sync: bool) -> Cask<'a> {
-        let path = Path::new(path);
+impl Cask {
+    pub fn open(path: &str, sync: bool) -> Cask {
+        let path = PathBuf::from(path);
 
         if path.exists() {
             assert!(path.is_dir());
         } else {
-            fs::create_dir(path).unwrap();
+            fs::create_dir(&path).unwrap();
         }
 
-        let mut key_dir: KeyDir<'a> = HashMap::new();
+        let mut key_dir = KeyDir::new();
 
         let current_file_id = 0;
 
-        let mut file = get_file_handle(&get_data_file_path(path, current_file_id), true);
+        let mut file = get_file_handle(&get_data_file_path(&path, current_file_id), true);
         let file_size = file.metadata().unwrap().len();
 
         let mut file_pos = 0;
@@ -238,16 +238,15 @@ impl<'a> Cask<'a> {
             let entry = Entry::from_read(&mut file);
 
             if entry.deleted {
-                key_dir.remove(&entry.key);
-            }
-            else {
+                key_dir.remove(&entry.key.into_owned());
+            } else {
                 let key_entry = KeyEntry {
                     file_id: current_file_id,
                     entry_pos: file_pos,
                     entry_size: entry.size(),
                     timestamp: entry.timestamp,
                 };
-                key_dir.insert(entry.key, key_entry);
+                key_dir.insert(entry.key.into_owned(), key_entry);
             }
 
             file_pos = file.seek(SeekFrom::Current(0)).unwrap();
@@ -263,8 +262,8 @@ impl<'a> Cask<'a> {
     }
 
     pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
-        self.key_dir.get(&Cow::from(key)).and_then(|key_entry| {
-            let mut file = get_file_handle(&get_data_file_path(self.path, key_entry.file_id),
+        self.key_dir.get(key).and_then(|key_entry| {
+            let mut file = get_file_handle(&get_data_file_path(&self.path, key_entry.file_id),
                                            false);
 
             file.seek(SeekFrom::Start(key_entry.entry_pos)).unwrap();
@@ -282,20 +281,22 @@ impl<'a> Cask<'a> {
         })
     }
 
-    pub fn put(&mut self, key: &'a [u8], value: &[u8]) {
-        let entry = Entry::new(key, value);
-        let active_file_pos = self.active_file.seek(SeekFrom::Current(0)).unwrap();
+    pub fn put(&mut self, key: Vec<u8>, value: &[u8]) {
+        let key_entry = {
+            let entry = Entry::new(&*key, value);
+            let active_file_pos = self.active_file.seek(SeekFrom::Current(0)).unwrap();
 
-        entry.write_bytes(&mut self.active_file);
+            entry.write_bytes(&mut self.active_file);
 
-        let key_entry = KeyEntry {
-            file_id: self.current_file_id,
-            entry_pos: active_file_pos,
-            entry_size: entry.size(),
-            timestamp: entry.timestamp,
+            KeyEntry {
+                file_id: self.current_file_id,
+                entry_pos: active_file_pos,
+                entry_size: entry.size(),
+                timestamp: entry.timestamp,
+            }
         };
 
-        self.key_dir.insert(Cow::from(key), key_entry);
+        self.key_dir.insert(key, key_entry);
 
         if self.sync {
             self.active_file.sync_data().unwrap();
