@@ -23,7 +23,10 @@ use regex::Regex;
 const ENTRY_STATIC_SIZE: usize = 14; // crc(4) + timestamp(4) + key_size(2) + value_size(4)
 const ENTRY_TOMBSTONE: u32 = !0;
 
+const HINT_STATIC_SIZE: usize = 14; // timestamp(4) + key_size(2) + entry_size(4) + entry_pos(4)
+
 const DATA_FILE_EXTENSION: &'static str = "cask.data";
+const HINT_FILE_EXTENSION: &'static str = "cask.hint";
 const LOCK_FILE_NAME: &'static str = "cask.lock";
 
 const DEFAULT_SIZE_THRESHOLD: usize = 100 * 1024 * 1024;
@@ -187,6 +190,57 @@ impl<'a> Entry<'a> {
     }
 }
 
+pub struct Hint<'a> {
+    key: Cow<'a, [u8]>,
+    entry_pos: u64,
+    value_size: u32,
+    timestamp: u32,
+}
+
+impl<'a> Hint<'a> {
+    pub fn new(e: &'a Entry, entry_pos: u64) -> Hint<'a> {
+        Hint {
+            key: Cow::from(&*e.key),
+            entry_pos: entry_pos,
+            value_size: e.value.len() as u32,
+            timestamp: e.timestamp,
+        }
+    }
+
+    pub fn size(&self) -> u64 {
+        HINT_STATIC_SIZE as u64 + self.key.len() as u64
+    }
+
+    fn entry_size(&self) -> u64 {
+        ENTRY_STATIC_SIZE as u64 + self.key.len() as u64 + self.value_size as u64
+    }
+
+    pub fn write_bytes<W: Write>(&self, writer: &mut W) {
+        writer.write_u32::<LittleEndian>(self.timestamp).unwrap();
+        writer.write_u16::<LittleEndian>(self.key.len() as u16).unwrap();
+        writer.write_u32::<LittleEndian>(self.value_size).unwrap();
+        writer.write_u64::<LittleEndian>(self.entry_pos).unwrap();
+        writer.write(&self.key).unwrap();
+    }
+
+    pub fn from_read<R: Read>(reader: &mut R) -> Hint<'a> {
+        let timestamp = reader.read_u32::<LittleEndian>().unwrap();
+        let key_size = reader.read_u16::<LittleEndian>().unwrap();
+        let value_size = reader.read_u32::<LittleEndian>().unwrap();
+        let entry_pos = reader.read_u64::<LittleEndian>().unwrap();
+
+        let mut key = vec![0u8; key_size as usize];
+        reader.read_exact(&mut key).unwrap();
+
+        Hint {
+            key: Cow::from(key),
+            entry_pos: entry_pos,
+            value_size: value_size,
+            timestamp: timestamp,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct KeyEntry {
     file_id: u32,
@@ -202,7 +256,8 @@ pub struct Cask {
     key_dir: KeyDir,
     lock_file: File,
     current_file_id: u32,
-    active_file: File,
+    active_data_file: File,
+    active_hint_file: File,
     sync: bool,
     size_threshold: usize,
 }
@@ -255,6 +310,10 @@ fn find_data_files(path: &Path) -> Vec<u32> {
     files
 }
 
+fn get_hint_file_path(path: &Path, file_id: u32) -> PathBuf {
+    path.join(file_id.to_string()).with_extension(HINT_FILE_EXTENSION)
+}
+
 impl Cask {
     pub fn open(path: &str, sync: bool) -> Cask {
         let path = PathBuf::from(path);
@@ -298,14 +357,16 @@ impl Cask {
         }
 
         let current_file_id = time::now().to_timespec().sec as u32;
-        let active_file = get_file_handle(&get_data_file_path(&path, current_file_id), true);
+        let active_data_file = get_file_handle(&get_data_file_path(&path, current_file_id), true);
+        let active_hint_file = get_file_handle(&get_hint_file_path(&path, current_file_id), true);
 
         Cask {
             path: path,
             key_dir: key_dir,
             lock_file: lock_file,
             current_file_id: current_file_id,
-            active_file: active_file,
+            active_data_file: active_data_file,
+            active_hint_file: active_hint_file,
             sync: sync,
             size_threshold: DEFAULT_SIZE_THRESHOLD,
         }
@@ -334,24 +395,32 @@ impl Cask {
     pub fn put(&mut self, key: Vec<u8>, value: &[u8]) {
         let key_entry = {
             let entry = Entry::new(&*key, value);
-            let mut active_file_pos = self.active_file.seek(SeekFrom::Current(0)).unwrap();
+            let mut active_data_file_pos =
+                self.active_data_file.seek(SeekFrom::Current(0)).unwrap();
 
-            if active_file_pos + entry.size() > self.size_threshold as u64 {
+            if active_data_file_pos + entry.size() > self.size_threshold as u64 {
                 if self.sync {
-                    self.active_file.sync_data().unwrap();
+                    self.active_data_file.sync_data().unwrap();
                 }
-                self.current_file_id = time::now().to_timespec().sec as u32;
-                self.active_file =
-                    get_file_handle(&get_data_file_path(&self.path, self.current_file_id), true);
 
-                active_file_pos = 0
+                self.current_file_id = time::now().to_timespec().sec as u32;
+
+                self.active_data_file =
+                    get_file_handle(&get_data_file_path(&self.path, self.current_file_id), true);
+                self.active_hint_file =
+                    get_file_handle(&get_hint_file_path(&self.path, self.current_file_id), true);
+
+                active_data_file_pos = 0
             }
 
-            entry.write_bytes(&mut self.active_file);
+            let hint = Hint::new(&entry, active_data_file_pos);
+
+            entry.write_bytes(&mut self.active_data_file);
+            hint.write_bytes(&mut self.active_hint_file);
 
             KeyEntry {
                 file_id: self.current_file_id,
-                entry_pos: active_file_pos,
+                entry_pos: active_data_file_pos,
                 entry_size: entry.size(),
                 timestamp: entry.timestamp,
             }
@@ -360,17 +429,17 @@ impl Cask {
         self.key_dir.insert(key, key_entry);
 
         if self.sync {
-            self.active_file.sync_data().unwrap();
+            self.active_data_file.sync_data().unwrap();
         }
     }
 
     pub fn delete(&mut self, key: &[u8]) {
         if self.key_dir.remove(key).is_some() {
             let entry = Entry::deleted(key);
-            entry.write_bytes(&mut self.active_file);
+            entry.write_bytes(&mut self.active_data_file);
 
             if self.sync {
-                self.active_file.sync_data().unwrap();
+                self.active_data_file.sync_data().unwrap();
             }
         }
     }
