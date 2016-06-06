@@ -189,7 +189,7 @@ impl<'a> Entry<'a> {
 
 #[derive(Debug)]
 pub struct KeyEntry {
-    file_id: usize,
+    file_id: u32,
     entry_pos: u64,
     entry_size: u64,
     timestamp: u32,
@@ -201,14 +201,10 @@ pub struct Cask {
     path: PathBuf,
     key_dir: KeyDir,
     lock_file: File,
-    current_file_id: usize,
+    current_file_id: u32,
     active_file: File,
     sync: bool,
     size_threshold: usize,
-}
-
-fn get_data_file_path(path: &Path, file_id: usize) -> PathBuf {
-    path.join(file_id.to_string()).with_extension(DATA_FILE_EXTENSION)
 }
 
 fn get_file_handle(path: &Path, write: bool) -> File {
@@ -228,7 +224,11 @@ fn get_file_handle(path: &Path, write: bool) -> File {
     }
 }
 
-fn find_data_files(path: &Path) -> Vec<usize> {
+fn get_data_file_path(path: &Path, file_id: u32) -> PathBuf {
+    path.join(file_id.to_string()).with_extension(DATA_FILE_EXTENSION)
+}
+
+fn find_data_files(path: &Path) -> Vec<u32> {
     let files = fs::read_dir(path).unwrap();
 
     lazy_static! {
@@ -236,14 +236,14 @@ fn find_data_files(path: &Path) -> Vec<usize> {
                 Regex::new(&format!("(\\d+).{}$", DATA_FILE_EXTENSION)).unwrap();
         }
 
-    let mut files: Vec<usize> = files.flat_map(|f| {
+    let mut files: Vec<u32> = files.flat_map(|f| {
             let file = f.unwrap();
             let file_metadata = file.metadata().unwrap();
 
             if file_metadata.is_file() {
                 let file_name = file.file_name();
                 let captures = RE.captures(file_name.to_str().unwrap());
-                captures.and_then(|c| c.at(1).and_then(|n| n.parse::<usize>().ok()))
+                captures.and_then(|c| c.at(1).and_then(|n| n.parse::<u32>().ok()))
             } else {
                 None
             }
@@ -298,7 +298,7 @@ impl Cask {
         }
 
         let current_file_id = if data_files.is_empty() {
-            0
+            time::now().to_timespec().sec as u32
         } else {
             data_files[data_files.len() - 1]
         };
@@ -346,7 +346,7 @@ impl Cask {
                 if self.sync {
                     self.active_file.sync_data().unwrap();
                 }
-                self.current_file_id += 1;
+                self.current_file_id = time::now().to_timespec().sec as u32;
                 self.active_file =
                     get_file_handle(&get_data_file_path(&self.path, self.current_file_id), true);
 
