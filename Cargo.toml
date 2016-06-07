@@ -6,8 +6,10 @@ authors = ["Andre Silva"]
 [dependencies]
 byteorder = "0.5.1"
 crc = "1.2.0"
+env_logger = "0.3"
 fs2 = "0.2.4"
 lazy_static = "0.2.1"
+log = "0.3"
+rand = "0.3"
 regex = "0.1"
 time = "0.1.35"
-rand = "0.3"

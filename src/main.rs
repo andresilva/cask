@@ -1,4 +1,5 @@
 extern crate cask;
+extern crate env_logger;
 extern crate rand;
 
 use std::sync::mpsc;
@@ -9,8 +10,9 @@ use cask::Cask;
 use rand::{Rng, SeedableRng, XorShiftRng};
 
 fn main() {
+    env_logger::init().unwrap();
+
     let cask = Cask::open("test.db", false);
-    println!("opened db");
 
     let seed = [1, 2, 3, 4];
 
@@ -19,7 +21,6 @@ fn main() {
     const DURATION_SECS: u64 = 10;
 
     let base_value = rand::thread_rng().gen::<usize>();
-    println!("{}", base_value);
 
     let mut threads = Vec::new();
     let mut txs = Vec::new();

@@ -1,5 +1,7 @@
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate log;
 extern crate byteorder;
 extern crate crc;
 extern crate fs2;
@@ -450,7 +452,13 @@ fn is_valid_hint_file(path: &Path) -> bool {
             let mut cursor = Cursor::new(&buf[buf.len() - 4..]);
             let checksum = cursor.read_u32::<LittleEndian>().unwrap();
 
-            crc == checksum
+            let valid = crc == checksum;
+
+            if !valid {
+                warn!("Found corrupt hint file: {:?}. Recreating", &path);
+            }
+
+            valid
         }
     }
 }
@@ -458,6 +466,8 @@ fn is_valid_hint_file(path: &Path) -> bool {
 impl Cask {
     pub fn open(path: &str, sync: bool) -> Cask {
         let path = PathBuf::from(path);
+
+        info!("Opening database: {:?}", &path);
 
         if path.exists() {
             assert!(path.is_dir());
@@ -477,6 +487,7 @@ impl Cask {
             let hint_file_path = get_hint_file_path(&path, *file_id);
 
             if is_valid_hint_file(&hint_file_path) {
+                info!("Loading hint file: {:?}", hint_file_path);
                 let mut hint_file = get_file_handle(&hint_file_path, false);
                 let hint_file_size = hint_file.metadata().unwrap().len();
 
@@ -499,7 +510,10 @@ impl Cask {
                     hint_file_pos = hint_file.seek(SeekFrom::Current(0)).unwrap();
                 }
             } else {
-                let mut data_file = get_file_handle(&get_data_file_path(&path, *file_id), false);
+                let data_file_path = get_data_file_path(&path, *file_id);
+                info!("Loading data file: {:?}", data_file_path);
+
+                let mut data_file = get_file_handle(&data_file_path, false);
                 let mut hint_file = get_file_handle(&hint_file_path, true);
                 let mut hint_file_digest = Crc32::new();
                 let data_file_size = data_file.metadata().unwrap().len();
@@ -538,6 +552,8 @@ impl Cask {
         let active_data_file = get_file_handle(&get_data_file_path(&path, current_file_id), true);
         let active_hint_file = get_file_handle(&get_hint_file_path(&path, current_file_id), true);
         let active_hint_file_digest = Crc32::new();
+
+        info!("Opened database: {:?}", &path);
 
         let inner = CaskInner {
             path: path,
