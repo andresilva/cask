@@ -445,12 +445,14 @@ fn is_valid_hint_file(path: &Path) -> bool {
         let mut buf = Vec::new();
         hint_file.read_to_end(&mut buf).unwrap();
 
-        let crc = crc32::checksum_ieee(&buf[..buf.len() - 4]);
+        buf.len() >= 4 && {
+            let crc = crc32::checksum_ieee(&buf[..buf.len() - 4]);
 
-        let mut cursor = Cursor::new(&buf[buf.len() - 4..]);
-        let checksum = cursor.read_u32::<LittleEndian>().unwrap();
+            let mut cursor = Cursor::new(&buf[buf.len() - 4..]);
+            let checksum = cursor.read_u32::<LittleEndian>().unwrap();
 
-        crc == checksum
+            crc == checksum
+        }
     }
 }
 
