@@ -11,8 +11,9 @@ use std::collections::HashMap;
 use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::prelude::*;
-use std::io::{Cursor, SeekFrom};
+use std::io::{Cursor, Result, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::result::Result::Ok;
 use std::vec::Vec;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -30,6 +31,31 @@ const HINT_FILE_EXTENSION: &'static str = "cask.hint";
 const LOCK_FILE_NAME: &'static str = "cask.lock";
 
 const DEFAULT_SIZE_THRESHOLD: usize = 100 * 1024 * 1024;
+
+struct Crc32(crc32::Digest);
+impl Crc32 {
+    fn new() -> Crc32 {
+        Crc32(crc32::Digest::new(crc32::IEEE))
+    }
+
+    fn write(&mut self, buf: &[u8]) {
+        self.0.write(buf);
+    }
+
+    fn sum32(&self) -> u32 {
+        self.0.sum32()
+    }
+}
+
+impl Write for Crc32 {
+    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+        self.write(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Entry<'a> {
@@ -105,7 +131,7 @@ impl<'a> Entry<'a> {
         }
 
         let checksum = {
-            let mut digest = crc32::Digest::new(crc32::IEEE);
+            let mut digest = Crc32::new();
             digest.write(&cursor.get_ref()[4..]);
             digest.write(&self.key);
             digest.write(&self.value);
@@ -166,7 +192,7 @@ impl<'a> Entry<'a> {
         };
 
         let crc = {
-            let mut digest = crc32::Digest::new(crc32::IEEE);
+            let mut digest = Crc32::new();
             digest.write(&cursor.get_ref()[4..]);
             digest.write(&key);
             digest.write(&value);
@@ -255,6 +281,7 @@ pub struct Cask {
     current_file_id: u32,
     active_data_file: File,
     active_hint_file: File,
+    active_hint_file_digest: Crc32,
     sync: bool,
     size_threshold: usize,
 }
@@ -262,10 +289,9 @@ pub struct Cask {
 fn get_file_handle(path: &Path, write: bool) -> File {
     if write {
         OpenOptions::new()
-            .read(true)
             .write(true)
             .create(true)
-            .append(true)
+            .truncate(true)
             .open(path)
             .unwrap()
     } else {
@@ -311,6 +337,24 @@ fn get_hint_file_path(path: &Path, file_id: u32) -> PathBuf {
     path.join(file_id.to_string()).with_extension(HINT_FILE_EXTENSION)
 }
 
+fn is_valid_hint_file(path: &Path) -> bool {
+    path.is_file() &&
+    {
+        let mut hint_file = get_file_handle(path, false);
+
+        // FIXME: avoid reading the whole hint file into memory;
+        let mut buf = Vec::new();
+        hint_file.read_to_end(&mut buf).unwrap();
+
+        let crc = crc32::checksum_ieee(&buf[..buf.len() - 4]);
+
+        let mut cursor = Cursor::new(&buf[buf.len() - 4..]);
+        let checksum = cursor.read_u32::<LittleEndian>().unwrap();
+
+        crc == checksum
+    }
+}
+
 impl Cask {
     pub fn open(path: &str, sync: bool) -> Cask {
         let path = PathBuf::from(path);
@@ -332,12 +376,12 @@ impl Cask {
         for file_id in &data_files {
             let hint_file_path = get_hint_file_path(&path, *file_id);
 
-            if hint_file_path.is_file() {
+            if is_valid_hint_file(&hint_file_path) {
                 let mut hint_file = get_file_handle(&hint_file_path, false);
                 let hint_file_size = hint_file.metadata().unwrap().len();
 
                 let mut hint_file_pos = 0;
-                while hint_file_pos < hint_file_size {
+                while hint_file_pos < hint_file_size - 4 {
                     let hint = Hint::from_read(&mut hint_file);
 
                     if hint.deleted {
@@ -357,6 +401,7 @@ impl Cask {
             } else {
                 let mut data_file = get_file_handle(&get_data_file_path(&path, *file_id), false);
                 let mut hint_file = get_file_handle(&hint_file_path, true);
+                let mut hint_file_digest = Crc32::new();
                 let data_file_size = data_file.metadata().unwrap().len();
 
                 let mut data_file_pos = 0;
@@ -366,6 +411,7 @@ impl Cask {
                     {
                         let hint = Hint::new(&entry, data_file_pos);
                         hint.write_bytes(&mut hint_file);
+                        hint.write_bytes(&mut hint_file_digest);
                     }
 
                     if entry.deleted {
@@ -380,14 +426,18 @@ impl Cask {
                         key_dir.insert(entry.key.into_owned(), key_entry);
                     }
 
+
                     data_file_pos = data_file.seek(SeekFrom::Current(0)).unwrap();
                 }
+
+                hint_file.write_u32::<LittleEndian>(hint_file_digest.sum32()).unwrap();
             }
         }
 
         let current_file_id = time::now().to_timespec().sec as u32;
         let active_data_file = get_file_handle(&get_data_file_path(&path, current_file_id), true);
         let active_hint_file = get_file_handle(&get_hint_file_path(&path, current_file_id), true);
+        let active_hint_file_digest = Crc32::new();
 
         Cask {
             path: path,
@@ -396,6 +446,7 @@ impl Cask {
             current_file_id: current_file_id,
             active_data_file: active_data_file,
             active_hint_file: active_hint_file,
+            active_hint_file_digest: active_hint_file_digest,
             sync: sync,
             size_threshold: DEFAULT_SIZE_THRESHOLD,
         }
@@ -438,6 +489,7 @@ impl Cask {
                     get_file_handle(&get_data_file_path(&self.path, self.current_file_id), true);
                 self.active_hint_file =
                     get_file_handle(&get_hint_file_path(&self.path, self.current_file_id), true);
+                self.active_hint_file_digest = Crc32::new();
 
                 active_data_file_pos = 0
             }
@@ -446,6 +498,7 @@ impl Cask {
 
             entry.write_bytes(&mut self.active_data_file);
             hint.write_bytes(&mut self.active_hint_file);
+            hint.write_bytes(&mut self.active_hint_file_digest);
 
             KeyEntry {
                 file_id: self.current_file_id,
@@ -470,11 +523,20 @@ impl Cask {
 
             entry.write_bytes(&mut self.active_data_file);
             hint.write_bytes(&mut self.active_hint_file);
+            hint.write_bytes(&mut self.active_hint_file_digest);
 
             if self.sync {
                 self.active_data_file.sync_data().unwrap();
             }
         }
+    }
+}
+
+impl Drop for Cask {
+    fn drop(&mut self) {
+        self.active_hint_file
+            .write_u32::<LittleEndian>(self.active_hint_file_digest.sum32())
+            .unwrap();
     }
 }
 
