@@ -4,6 +4,7 @@ use std::io::{Result, Write};
 use crc::{crc32, Hasher32};
 
 pub struct Crc32(crc32::Digest);
+
 impl Crc32 {
     pub fn new() -> Crc32 {
         Crc32(crc32::Digest::new(crc32::IEEE))

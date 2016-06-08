@@ -1,17 +1,14 @@
-extern crate time;
-
 use std::borrow::Cow;
 use std::io::prelude::*;
 use std::io::Cursor;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use time;
 
 use util::{crc32, Crc32};
 
 const ENTRY_STATIC_SIZE: usize = 14; // crc(4) + timestamp(4) + key_size(2) + value_size(4)
 const ENTRY_TOMBSTONE: u32 = !0;
-
-const HINT_STATIC_SIZE: usize = 14; // timestamp(4) + key_size(2) + entry_size(4) + entry_pos(4)
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Entry<'a> {
@@ -183,10 +180,6 @@ impl<'a> Hint<'a> {
             timestamp: e.timestamp,
             deleted: e.deleted,
         }
-    }
-
-    pub fn size(&self) -> u64 {
-        HINT_STATIC_SIZE as u64 + self.key.len() as u64
     }
 
     pub fn entry_size(&self) -> u64 {

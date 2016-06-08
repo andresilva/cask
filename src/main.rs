@@ -33,9 +33,8 @@ fn main() {
         let t = thread::spawn(move || {
             let mut i = 0;
             loop {
-                match rx.try_recv() {
-                    Ok(_) => break,
-                    _ => {}
+                if let Ok(_) = rx.try_recv() {
+                    break;
                 }
 
                 let r = rng.next_f64();
