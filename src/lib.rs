@@ -13,16 +13,17 @@ use std::collections::HashMap;
 use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::prelude::*;
-use std::io::{Cursor, Result, SeekFrom};
+use std::io::{Cursor, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::result::Result::Ok;
 use std::sync::{Arc, RwLock};
 use std::vec::Vec;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use crc::{crc32, Hasher32};
 use fs2::FileExt;
 use regex::Regex;
+
+mod util;
+use util::{crc32, Crc32};
 
 const ENTRY_STATIC_SIZE: usize = 14; // crc(4) + timestamp(4) + key_size(2) + value_size(4)
 const ENTRY_TOMBSTONE: u32 = !0;
@@ -34,31 +35,6 @@ const HINT_FILE_EXTENSION: &'static str = "cask.hint";
 const LOCK_FILE_NAME: &'static str = "cask.lock";
 
 const DEFAULT_SIZE_THRESHOLD: usize = 100 * 1024 * 1024;
-
-struct Crc32(crc32::Digest);
-impl Crc32 {
-    fn new() -> Crc32 {
-        Crc32(crc32::Digest::new(crc32::IEEE))
-    }
-
-    fn write(&mut self, buf: &[u8]) {
-        self.0.write(buf);
-    }
-
-    fn sum32(&self) -> u32 {
-        self.0.sum32()
-    }
-}
-
-impl Write for Crc32 {
-    fn write(&mut self, buf: &[u8]) -> Result<usize> {
-        self.write(buf);
-        Ok(buf.len())
-    }
-    fn flush(&mut self) -> Result<()> {
-        Ok(())
-    }
-}
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Entry<'a> {
@@ -114,7 +90,7 @@ impl<'a> Entry<'a> {
             cursor.write_all(&self.value).unwrap();
         }
 
-        let checksum = crc32::checksum_ieee(&cursor.get_ref()[4..]);
+        let checksum = crc32(&cursor.get_ref()[4..]);
         cursor.set_position(0);
         cursor.write_u32::<LittleEndian>(checksum).unwrap();
 
@@ -156,7 +132,7 @@ impl<'a> Entry<'a> {
         let mut cursor = Cursor::new(bytes);
 
         let checksum = cursor.read_u32::<LittleEndian>().unwrap();
-        assert_eq!(crc32::checksum_ieee(&bytes[4..]), checksum);
+        assert_eq!(crc32(&bytes[4..]), checksum);
 
         let timestamp = cursor.read_u32::<LittleEndian>().unwrap();
         let key_size = cursor.read_u16::<LittleEndian>().unwrap();
@@ -447,7 +423,7 @@ fn is_valid_hint_file(path: &Path) -> bool {
 
         buf.len() >= 4 &&
         {
-            let crc = crc32::checksum_ieee(&buf[..buf.len() - 4]);
+            let crc = crc32(&buf[..buf.len() - 4]);
 
             let mut cursor = Cursor::new(&buf[buf.len() - 4..]);
             let checksum = cursor.read_u32::<LittleEndian>().unwrap();
