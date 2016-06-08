@@ -1,16 +1,42 @@
 extern crate cask;
 extern crate env_logger;
+extern crate log;
 extern crate rand;
+extern crate time;
 
+use std::env;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use cask::Cask;
+use env_logger::LogBuilder;
 use rand::{Rng, SeedableRng, XorShiftRng};
+use log::LogRecord;
+
+use cask::Cask;
+
+fn init_logger() {
+    let format = |record: &LogRecord| {
+        let ts = time::strftime("%Y-%m-%d %H:%M:%S,%f", &time::now()).unwrap();
+        format!("{} {} {} {}",
+                &ts[..ts.len() - 6],
+                record.level(),
+                record.location().module_path(),
+                record.args())
+    };
+
+    let mut builder = LogBuilder::new();
+    builder.format(format);
+
+    if let Ok(s) = env::var("RUST_LOG") {
+        builder.parse(&s);
+    }
+
+    builder.init().unwrap();
+}
 
 fn main() {
-    env_logger::init().unwrap();
+    init_logger();
 
     let cask = Cask::open("test.db", false);
 
