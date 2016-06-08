@@ -10,6 +10,7 @@ extern crate time;
 
 mod cask;
 mod data;
+mod file;
 mod util;
 
 pub use cask::Cask;
