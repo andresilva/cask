@@ -25,6 +25,9 @@ impl CaskInner {
         self.index.get(key).and_then(|index_entry| {
             let entry = self.log.read_entry(index_entry.file_id, index_entry.entry_pos);
             if entry.deleted {
+                warn!("Index pointed to dead entry: Entry {{ key: {:?}, timestamp: {} }}",
+                      entry.key,
+                      entry.timestamp);
                 None
             } else {
                 Some(entry.value.into_owned())
