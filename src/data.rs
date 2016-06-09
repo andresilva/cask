@@ -5,9 +5,9 @@ use std::io::Cursor;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use time;
 
-use util::{crc32, Crc32};
+use util::{xxhash32, XxHash32};
 
-const ENTRY_STATIC_SIZE: usize = 14; // crc(4) + timestamp(4) + key_size(2) + value_size(4)
+const ENTRY_STATIC_SIZE: usize = 14; // checksum(4) + timestamp(4) + key_size(2) + value_size(4)
 const ENTRY_TOMBSTONE: u32 = !0;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -64,7 +64,7 @@ impl<'a> Entry<'a> {
             cursor.write_all(&self.value).unwrap();
         }
 
-        let checksum = crc32(&cursor.get_ref()[4..]);
+        let checksum = xxhash32(&cursor.get_ref()[4..]);
         cursor.set_position(0);
         cursor.write_u32::<LittleEndian>(checksum).unwrap();
 
@@ -84,11 +84,11 @@ impl<'a> Entry<'a> {
         }
 
         let checksum = {
-            let mut digest = Crc32::new();
-            digest.write(&cursor.get_ref()[4..]);
-            digest.write(&self.key);
-            digest.write(&self.value);
-            digest.sum32()
+            let mut hasher = XxHash32::new();
+            hasher.update(&cursor.get_ref()[4..]);
+            hasher.update(&self.key);
+            hasher.update(&self.value);
+            hasher.get()
         };
 
         cursor.set_position(0);
@@ -106,7 +106,7 @@ impl<'a> Entry<'a> {
         let mut cursor = Cursor::new(bytes);
 
         let checksum = cursor.read_u32::<LittleEndian>().unwrap();
-        assert_eq!(crc32(&bytes[4..]), checksum);
+        assert_eq!(xxhash32(&bytes[4..]), checksum);
 
         let timestamp = cursor.read_u32::<LittleEndian>().unwrap();
         let key_size = cursor.read_u16::<LittleEndian>().unwrap();
@@ -144,15 +144,15 @@ impl<'a> Entry<'a> {
             Cow::from(value)
         };
 
-        let crc = {
-            let mut digest = Crc32::new();
-            digest.write(&cursor.get_ref()[4..]);
-            digest.write(&key);
-            digest.write(&value);
-            digest.sum32()
+        let hash = {
+            let mut hasher = XxHash32::new();
+            hasher.update(&cursor.get_ref()[4..]);
+            hasher.update(&key);
+            hasher.update(&value);
+            hasher.get()
         };
 
-        assert_eq!(crc, checksum);
+        assert_eq!(hash, checksum);
 
         Entry {
             key: Cow::from(key),

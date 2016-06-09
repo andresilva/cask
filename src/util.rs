@@ -3,36 +3,39 @@ use std::io::{Result, Write};
 use std::path::Path;
 use std::result::Result::Ok;
 
-use crc::{crc32, Hasher32};
+use xxhash2::{hash32, State32};
 
-pub struct Crc32(crc32::Digest);
+pub struct XxHash32(State32);
 
-impl Crc32 {
-    pub fn new() -> Crc32 {
-        Crc32(crc32::Digest::new(crc32::IEEE))
+impl XxHash32 {
+    pub fn new() -> XxHash32 {
+        let mut state = State32::new();
+        state.reset(0);
+        XxHash32(state)
     }
 
-    pub fn write(&mut self, buf: &[u8]) {
-        self.0.write(buf);
+    pub fn update(&mut self, buf: &[u8]) {
+        self.0.update(buf);
     }
 
-    pub fn sum32(&self) -> u32 {
-        self.0.sum32()
+    pub fn get(&self) -> u32 {
+        self.0.finish()
     }
 }
 
-impl Write for Crc32 {
+impl Write for XxHash32 {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
-        self.write(buf);
+        self.update(buf);
         Ok(buf.len())
     }
+
     fn flush(&mut self) -> Result<()> {
         Ok(())
     }
 }
 
-pub fn crc32(buf: &[u8]) -> u32 {
-    crc32::checksum_ieee(buf)
+pub fn xxhash32(buf: &[u8]) -> u32 {
+    hash32(buf, 0)
 }
 
 pub fn get_file_handle(path: &Path, write: bool) -> File {

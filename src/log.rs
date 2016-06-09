@@ -12,7 +12,7 @@ use time;
 use regex::Regex;
 
 use data::{Entry, Hint};
-use util::{crc32, Crc32, get_file_handle};
+use util::{xxhash32, XxHash32, get_file_handle};
 
 const DATA_FILE_EXTENSION: &'static str = "cask.data";
 const HINT_FILE_EXTENSION: &'static str = "cask.hint";
@@ -28,7 +28,7 @@ pub struct Log {
     current_file_id: u32,
     active_data_file: File,
     active_hint_file: File,
-    active_hint_file_digest: Crc32,
+    active_hint_file_hasher: XxHash32,
 }
 
 pub struct Entries<'a> {
@@ -73,7 +73,7 @@ impl<'a> Iterator for Hints<'a> {
 
 pub struct RecreateHints<'a> {
     hint_file: File,
-    hint_file_digest: Crc32,
+    hint_file_hasher: XxHash32,
     entries: Entries<'a>,
 }
 
@@ -85,7 +85,7 @@ impl<'a> Iterator for RecreateHints<'a> {
             let (entry_pos, entry) = e;
             let hint = Hint::from(entry, entry_pos);
             hint.write_bytes(&mut self.hint_file);
-            hint.write_bytes(&mut self.hint_file_digest);
+            hint.write_bytes(&mut self.hint_file_hasher);
             hint
         })
     }
@@ -95,7 +95,7 @@ impl<'a> Drop for RecreateHints<'a> {
     fn drop(&mut self) {
         while self.next().is_some() {}
         self.hint_file
-            .write_u32::<LittleEndian>(self.hint_file_digest.sum32())
+            .write_u32::<LittleEndian>(self.hint_file_hasher.get())
             .unwrap();
     }
 }
@@ -116,7 +116,7 @@ impl Log {
         let current_file_id = time::now().to_timespec().sec as u32;
         let active_data_file = get_file_handle(&get_data_file_path(&path, current_file_id), true);
         let active_hint_file = get_file_handle(&get_hint_file_path(&path, current_file_id), true);
-        let active_hint_file_digest = Crc32::new();
+        let active_hint_file_hasher = XxHash32::new();
 
         Log {
             path: path,
@@ -126,7 +126,7 @@ impl Log {
             current_file_id: current_file_id,
             active_data_file: active_data_file,
             active_hint_file: active_hint_file,
-            active_hint_file_digest: active_hint_file_digest,
+            active_hint_file_hasher: active_hint_file_hasher,
         }
     }
 
@@ -199,7 +199,7 @@ impl Log {
 
         RecreateHints {
             hint_file: hint_file,
-            hint_file_digest: Crc32::new(),
+            hint_file_hasher: XxHash32::new(),
             entries: entries,
         }
     }
@@ -222,7 +222,7 @@ impl Log {
 
         entry.write_bytes(&mut self.active_data_file);
         hint.write_bytes(&mut self.active_hint_file);
-        hint.write_bytes(&mut self.active_hint_file_digest);
+        hint.write_bytes(&mut self.active_hint_file_hasher);
 
         if self.sync {
             self.active_data_file.sync_data().unwrap();
@@ -237,7 +237,7 @@ impl Log {
         }
 
         self.active_hint_file
-            .write_u32::<LittleEndian>(self.active_hint_file_digest.sum32())
+            .write_u32::<LittleEndian>(self.active_hint_file_hasher.get())
             .unwrap();
 
         self.current_file_id = time::now().to_timespec().sec as u32;
@@ -247,14 +247,14 @@ impl Log {
 
         self.active_hint_file =
             get_file_handle(&get_hint_file_path(&self.path, self.current_file_id), true);
-        self.active_hint_file_digest = Crc32::new();
+        self.active_hint_file_hasher = XxHash32::new();
     }
 }
 
 impl Drop for Log {
     fn drop(&mut self) {
         self.active_hint_file
-            .write_u32::<LittleEndian>(self.active_hint_file_digest.sum32())
+            .write_u32::<LittleEndian>(self.active_hint_file_hasher.get())
             .unwrap();
 
         self.lock_file.unlock().unwrap();
@@ -280,12 +280,12 @@ fn is_valid_hint_file(path: &Path) -> bool {
 
         buf.len() >= 4 &&
         {
-            let crc = crc32(&buf[..buf.len() - 4]);
+            let hash = xxhash32(&buf[..buf.len() - 4]);
 
             let mut cursor = Cursor::new(&buf[buf.len() - 4..]);
             let checksum = cursor.read_u32::<LittleEndian>().unwrap();
 
-            let valid = crc == checksum;
+            let valid = hash == checksum;
 
             if !valid {
                 warn!("Found corrupt hint file: {:?}", &path);
