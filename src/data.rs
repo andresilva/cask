@@ -3,23 +3,24 @@ use std::io::prelude::*;
 use std::io::Cursor;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use time;
 
 use util::{xxhash32, XxHash32};
 
-const ENTRY_STATIC_SIZE: usize = 14; // checksum(4) + timestamp(4) + key_size(2) + value_size(4)
+const ENTRY_STATIC_SIZE: usize = 18; // checksum(4) + sequence(8) + key_size(2) + value_size(4)
 const ENTRY_TOMBSTONE: u32 = !0;
+
+pub type SequenceNumber = u64;
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Entry<'a> {
     pub key: Cow<'a, [u8]>,
     pub value: Cow<'a, [u8]>,
-    pub timestamp: u32,
+    pub sequence: SequenceNumber,
     pub deleted: bool,
 }
 
 impl<'a> Entry<'a> {
-    pub fn new<K, V>(key: K, value: V) -> Entry<'a>
+    pub fn new<K, V>(sequence: SequenceNumber, key: K, value: V) -> Entry<'a>
         where Cow<'a, [u8]>: From<K>,
               Cow<'a, [u8]>: From<V>
     {
@@ -29,18 +30,18 @@ impl<'a> Entry<'a> {
         Entry {
             key: Cow::from(key),
             value: v,
-            timestamp: time::now().to_timespec().sec as u32,
+            sequence: sequence,
             deleted: false,
         }
     }
 
-    pub fn deleted<K>(key: K) -> Entry<'a>
+    pub fn deleted<K>(sequence: SequenceNumber, key: K) -> Entry<'a>
         where Cow<'a, [u8]>: From<K>
     {
         Entry {
             key: Cow::from(key),
             value: Cow::Borrowed(&[]),
-            timestamp: time::now().to_timespec().sec as u32,
+            sequence: sequence,
             deleted: true,
         }
     }
@@ -52,7 +53,7 @@ impl<'a> Entry<'a> {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut cursor = Cursor::new(Vec::with_capacity(self.size() as usize));
         cursor.set_position(4);
-        cursor.write_u32::<LittleEndian>(self.timestamp).unwrap();
+        cursor.write_u64::<LittleEndian>(self.sequence).unwrap();
         cursor.write_u16::<LittleEndian>(self.key.len() as u16).unwrap();
 
         if self.deleted {
@@ -74,7 +75,7 @@ impl<'a> Entry<'a> {
     pub fn write_bytes<W: Write>(&self, writer: &mut W) {
         let mut cursor = Cursor::new(Vec::with_capacity(ENTRY_STATIC_SIZE));
         cursor.set_position(4);
-        cursor.write_u32::<LittleEndian>(self.timestamp).unwrap();
+        cursor.write_u64::<LittleEndian>(self.sequence).unwrap();
         cursor.write_u16::<LittleEndian>(self.key.len() as u16).unwrap();
 
         if self.deleted {
@@ -108,14 +109,14 @@ impl<'a> Entry<'a> {
         let checksum = cursor.read_u32::<LittleEndian>().unwrap();
         assert_eq!(xxhash32(&bytes[4..]), checksum);
 
-        let timestamp = cursor.read_u32::<LittleEndian>().unwrap();
+        let sequence = cursor.read_u64::<LittleEndian>().unwrap();
         let key_size = cursor.read_u16::<LittleEndian>().unwrap();
         let value_size = cursor.read_u32::<LittleEndian>().unwrap();
 
         Entry {
             key: Cow::from(&bytes[ENTRY_STATIC_SIZE..ENTRY_STATIC_SIZE + key_size as usize]),
             value: Cow::from(&bytes[ENTRY_STATIC_SIZE + key_size as usize..]),
-            timestamp: timestamp,
+            sequence: sequence,
             deleted: value_size == ENTRY_TOMBSTONE,
         }
     }
@@ -126,7 +127,7 @@ impl<'a> Entry<'a> {
 
         let mut cursor = Cursor::new(header);
         let checksum = cursor.read_u32::<LittleEndian>().unwrap();
-        let timestamp = cursor.read_u32::<LittleEndian>().unwrap();
+        let sequence = cursor.read_u64::<LittleEndian>().unwrap();
         let key_size = cursor.read_u16::<LittleEndian>().unwrap();
         let value_size = cursor.read_u32::<LittleEndian>().unwrap();
 
@@ -157,7 +158,7 @@ impl<'a> Entry<'a> {
         Entry {
             key: Cow::from(key),
             value: Cow::from(value),
-            timestamp: timestamp,
+            sequence: sequence,
             deleted: deleted,
         }
     }
@@ -167,7 +168,7 @@ pub struct Hint<'a> {
     pub key: Cow<'a, [u8]>,
     pub entry_pos: u64,
     pub value_size: u32,
-    pub timestamp: u32,
+    pub sequence: SequenceNumber,
     pub deleted: bool,
 }
 
@@ -177,7 +178,7 @@ impl<'a> Hint<'a> {
             key: Cow::from(&*e.key),
             entry_pos: entry_pos,
             value_size: e.value.len() as u32,
-            timestamp: e.timestamp,
+            sequence: e.sequence,
             deleted: e.deleted,
         }
     }
@@ -187,7 +188,7 @@ impl<'a> Hint<'a> {
             key: e.key,
             entry_pos: entry_pos,
             value_size: e.value.len() as u32,
-            timestamp: e.timestamp,
+            sequence: e.sequence,
             deleted: e.deleted,
         }
     }
@@ -197,7 +198,7 @@ impl<'a> Hint<'a> {
     }
 
     pub fn write_bytes<W: Write>(&self, writer: &mut W) {
-        writer.write_u32::<LittleEndian>(self.timestamp).unwrap();
+        writer.write_u64::<LittleEndian>(self.sequence).unwrap();
         writer.write_u16::<LittleEndian>(self.key.len() as u16).unwrap();
         writer.write_u32::<LittleEndian>(self.value_size).unwrap();
         writer.write_u64::<LittleEndian>(self.entry_pos).unwrap();
@@ -205,7 +206,7 @@ impl<'a> Hint<'a> {
     }
 
     pub fn from_read<R: Read>(reader: &mut R) -> Hint<'a> {
-        let timestamp = reader.read_u32::<LittleEndian>().unwrap();
+        let sequence = reader.read_u64::<LittleEndian>().unwrap();
         let key_size = reader.read_u16::<LittleEndian>().unwrap();
         let value_size = reader.read_u32::<LittleEndian>().unwrap();
         let entry_pos = reader.read_u64::<LittleEndian>().unwrap();
@@ -217,7 +218,7 @@ impl<'a> Hint<'a> {
             key: Cow::from(key),
             entry_pos: entry_pos,
             value_size: value_size,
-            timestamp: timestamp,
+            sequence: sequence,
             deleted: value_size == ENTRY_TOMBSTONE,
         }
     }
@@ -231,12 +232,13 @@ mod tests {
 
     #[test]
     fn test_serialization() {
+        let sequence = 0;
         let key: &[u8] = &[0, 0, 0];
         let value: &[u8] = &[0, 0, 0];
-        let entry = Entry::new(key, value);
-        let deleted_entry = Entry::deleted(key);
+        let entry = Entry::new(sequence, key, value);
+        let deleted_entry = Entry::deleted(sequence, key);
 
-        assert_eq!(entry.to_bytes().len(), 20);
+        assert_eq!(entry.to_bytes().len(), 24);
 
         assert_eq!(entry, Entry::from_bytes(&entry.to_bytes()));
         assert_eq!(entry, Entry::from_read(&mut Cursor::new(entry.to_bytes())));
@@ -254,9 +256,10 @@ mod tests {
 
     #[test]
     fn test_deleted() {
+        let sequence = 0;
         let key: &[u8] = &[0, 0, 0];
 
-        assert!(Entry::deleted(key).deleted);
-        assert_eq!(Entry::deleted(key).value.len(), 0);
+        assert!(Entry::deleted(sequence, key).deleted);
+        assert_eq!(Entry::deleted(sequence, key).value.len(), 0);
     }
 }

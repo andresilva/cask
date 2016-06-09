@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::vec::Vec;
 
-use data::{Entry, Hint};
+use data::{Entry, Hint, SequenceNumber};
 use log::Log;
 
 #[derive(Debug)]
@@ -10,12 +10,13 @@ pub struct IndexEntry {
     file_id: u32,
     entry_pos: u64,
     entry_size: u64,
-    timestamp: u32,
+    sequence: SequenceNumber,
 }
 
 pub type Index = HashMap<Vec<u8>, IndexEntry>;
 
 pub struct CaskInner {
+    current_sequence: SequenceNumber,
     index: Index,
     log: Log,
 }
@@ -25,9 +26,9 @@ impl CaskInner {
         self.index.get(key).and_then(|index_entry| {
             let entry = self.log.read_entry(index_entry.file_id, index_entry.entry_pos);
             if entry.deleted {
-                warn!("Index pointed to dead entry: Entry {{ key: {:?}, timestamp: {} }}",
+                warn!("Index pointed to dead entry: Entry {{ key: {:?}, sequence: {} }}",
                       entry.key,
-                      entry.timestamp);
+                      entry.sequence);
                 None
             } else {
                 Some(entry.value.into_owned())
@@ -37,15 +38,17 @@ impl CaskInner {
 
     pub fn put(&mut self, key: Vec<u8>, value: &[u8]) {
         let index_entry = {
-            let entry = Entry::new(&*key, value);
+            let entry = Entry::new(self.current_sequence, &*key, value);
 
             let (file_id, file_pos) = self.log.write_entry(&entry);
+
+            self.current_sequence += 1;
 
             IndexEntry {
                 file_id: file_id,
                 entry_pos: file_pos,
                 entry_size: entry.size(),
-                timestamp: entry.timestamp,
+                sequence: entry.sequence,
             }
         };
 
@@ -54,8 +57,9 @@ impl CaskInner {
 
     pub fn delete(&mut self, key: &[u8]) {
         if self.index.remove(key).is_some() {
-            let entry = Entry::deleted(key);
+            let entry = Entry::deleted(self.current_sequence, key);
             let _ = self.log.write_entry(&entry);
+            self.current_sequence += 1;
         }
     }
 }
@@ -71,8 +75,14 @@ impl Cask {
         let mut log = Log::open(path, sync);
         let mut index = Index::new();
 
+        let mut sequence = 0;
+
         for file_id in log.files() {
             let mut f = |hint: Hint| {
+                if hint.sequence > sequence {
+                    sequence = hint.sequence;
+                }
+
                 if hint.deleted {
                     index.remove(&hint.key.into_owned());
                 } else {
@@ -80,7 +90,7 @@ impl Cask {
                         file_id: file_id,
                         entry_pos: hint.entry_pos,
                         entry_size: hint.entry_size(),
-                        timestamp: hint.timestamp,
+                        sequence: hint.sequence,
                     };
                     index.insert(hint.key.into_owned(), index_entry);
                 }
@@ -97,13 +107,15 @@ impl Cask {
                         f(hint);
                     }
                 }
-            }
+            };
         }
 
         info!("Opened database: {:?}", &path);
+        info!("Current sequence number: {:?}", sequence);
 
         Cask {
             inner: Arc::new(RwLock::new(CaskInner {
+                current_sequence: sequence + 1,
                 log: log,
                 index: index,
             })),
