@@ -71,9 +71,7 @@ impl Cask {
         let mut log = Log::open(path, sync);
         let mut index = Index::new();
 
-        let files = log.find_files();
-
-        for file_id in files {
+        for file_id in log.files() {
             let mut f = |hint: Hint| {
                 if hint.deleted {
                     index.remove(&hint.key.into_owned());

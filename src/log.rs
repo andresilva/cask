@@ -25,6 +25,7 @@ pub struct Log {
     sync: bool,
     size_threshold: usize,
     lock_file: File,
+    files: Vec<u32>,
     current_file_id: u32,
     active_data_file_path: PathBuf,
     active_data_file: File,
@@ -46,6 +47,8 @@ impl Log {
         let lock_file = File::create(path.join(LOCK_FILE_NAME)).unwrap();
         lock_file.try_lock_exclusive().unwrap();
 
+        let files = find_data_files(&path);
+
         let current_file_id = time::now().to_timespec().sec as u32;
         let active_data_file_path = get_data_file_path(&path, current_file_id);
         let active_data_file = get_file_handle(&active_data_file_path, true);
@@ -59,6 +62,7 @@ impl Log {
             sync: sync,
             size_threshold: DEFAULT_SIZE_THRESHOLD,
             lock_file: lock_file,
+            files: files,
             current_file_id: current_file_id,
             active_data_file: active_data_file,
             active_data_file_path: active_data_file_path,
@@ -67,36 +71,8 @@ impl Log {
         }
     }
 
-    pub fn find_files(&self) -> Vec<u32> {
-        let files = fs::read_dir(&self.path).unwrap();
-
-        lazy_static! {
-            static ref RE: Regex =
-                Regex::new(&format!("(\\d+).{}$", DATA_FILE_EXTENSION)).unwrap();
-        }
-
-        let mut files: Vec<u32> = files.flat_map(|f| {
-                let file = f.unwrap();
-                let file_metadata = file.metadata().unwrap();
-
-                if file_metadata.is_file() {
-                    let file_name = file.file_name();
-                    let captures = RE.captures(file_name.to_str().unwrap());
-                    captures.and_then(|c| c.at(1).and_then(|n| n.parse::<u32>().ok()))
-                        .and_then(|id| if id != self.current_file_id {
-                            Some(id)
-                        } else {
-                            None
-                        })
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        files.sort();
-
-        files
+    pub fn files(&self) -> Vec<u32> {
+        self.files.clone()
     }
 
     pub fn entries<'a>(&self, file_id: u32) -> Entries<'a> {
@@ -130,7 +106,7 @@ impl Log {
 
     pub fn recreate_hints<'a>(&mut self, file_id: u32) -> RecreateHints<'a> {
         let hint_file_path = get_hint_file_path(&self.path, file_id);
-        info!("Re-creating hint file: {:?}", hint_file_path);
+        warn!("Re-creating hint file: {:?}", hint_file_path);
         let hint_file = get_file_handle(&hint_file_path, true);
         let entries = self.entries(file_id);
 
@@ -286,6 +262,33 @@ fn get_data_file_path(path: &Path, file_id: u32) -> PathBuf {
 
 fn get_hint_file_path(path: &Path, file_id: u32) -> PathBuf {
     path.join(file_id.to_string()).with_extension(HINT_FILE_EXTENSION)
+}
+
+fn find_data_files(path: &Path) -> Vec<u32> {
+    let files = fs::read_dir(path).unwrap();
+
+    lazy_static! {
+        static ref RE: Regex =
+            Regex::new(&format!("(\\d+).{}$", DATA_FILE_EXTENSION)).unwrap();
+    }
+
+    let mut files: Vec<u32> = files.flat_map(|f| {
+            let file = f.unwrap();
+            let file_metadata = file.metadata().unwrap();
+
+            if file_metadata.is_file() {
+                let file_name = file.file_name();
+                let captures = RE.captures(file_name.to_str().unwrap());
+                captures.and_then(|c| c.at(1).and_then(|n| n.parse::<u32>().ok()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    files.sort();
+
+    files
 }
 
 fn is_valid_hint_file(path: &Path) -> bool {
