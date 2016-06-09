@@ -221,9 +221,10 @@ impl Log {
         if active_data_file_pos + entry.size() > self.size_threshold as u64 {
             info!("Active data file {:?} reached file limit",
                   self.active_data_file_path);
+
+            self.close_active_file();
             self.new_active_file();
-            info!("Created new active data file {:?}",
-                  self.active_data_file_path);
+
             active_data_file_pos = 0;
         }
 
@@ -240,7 +241,7 @@ impl Log {
         (self.current_file_id, active_data_file_pos)
     }
 
-    fn new_active_file(&mut self) {
+    fn close_active_file(&mut self) {
         if self.sync {
             self.active_data_file.sync_data().unwrap();
         }
@@ -249,6 +250,10 @@ impl Log {
             .write_u32::<LittleEndian>(self.active_hint_file_hasher.get())
             .unwrap();
 
+        info!("Closed active data file {:?}", self.active_data_file_path);
+    }
+
+    fn new_active_file(&mut self) {
         self.current_file_id = time::now().to_timespec().sec as u32;
 
         self.active_data_file_path = get_data_file_path(&self.path, self.current_file_id);
@@ -258,6 +263,9 @@ impl Log {
             get_file_handle(&get_hint_file_path(&self.path, self.current_file_id), true);
 
         self.active_hint_file_hasher = XxHash32::new();
+
+        info!("Created new active data file {:?}",
+              self.active_data_file_path);
     }
 }
 
