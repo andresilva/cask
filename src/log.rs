@@ -1,10 +1,9 @@
 use std::fs;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::prelude::*;
 use std::io::{Cursor, SeekFrom, Take};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-use std::slice::Iter;
 use std::vec::Vec;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -166,7 +165,7 @@ impl Log {
     pub fn entries<'a>(&self, file_id: u32) -> Entries<'a> {
         let data_file_path = get_data_file_path(&self.path, file_id);
         info!("Loading data file: {:?}", data_file_path);
-        let mut data_file = get_file_handle(&data_file_path, false);
+        let data_file = get_file_handle(&data_file_path, false);
         let data_file_size = data_file.metadata().unwrap().len();
 
         Entries {
@@ -180,7 +179,7 @@ impl Log {
         let hint_file_path = get_hint_file_path(&self.path, file_id);
         if is_valid_hint_file(&hint_file_path) {
             info!("Loading hint file: {:?}", hint_file_path);
-            let mut hint_file = get_file_handle(&hint_file_path, false);
+            let hint_file = get_file_handle(&hint_file_path, false);
             let hint_file_size = hint_file.metadata().unwrap().len();
 
             Some(Hints {
@@ -192,10 +191,10 @@ impl Log {
         }
     }
 
-    pub fn recreate_hints<'a>(&self, file_id: u32) -> RecreateHints<'a> {
+    pub fn recreate_hints<'a>(&mut self, file_id: u32) -> RecreateHints<'a> {
         let hint_file_path = get_hint_file_path(&self.path, file_id);
         info!("Re-creating hint file: {:?}", hint_file_path);
-        let mut hint_file = get_file_handle(&hint_file_path, true);
+        let hint_file = get_file_handle(&hint_file_path, true);
         let entries = self.entries(file_id);
 
         RecreateHints {
@@ -205,12 +204,7 @@ impl Log {
         }
     }
 
-    pub fn read_entry<'a>(&self,
-                          file_id: u32,
-                          entry_pos: u64,
-                          entry_size: u64,
-                          timestamp: u32)
-                          -> Entry<'a> {
+    pub fn read_entry<'a>(&self, file_id: u32, entry_pos: u64) -> Entry<'a> {
         let mut data_file = get_file_handle(&get_data_file_path(&self.path, file_id), false);
         data_file.seek(SeekFrom::Start(entry_pos)).unwrap();
         Entry::from_read(&mut data_file)

@@ -1,18 +1,9 @@
 use std::collections::HashMap;
-use std::fs;
-use std::fs::File;
-use std::io::prelude::*;
-use std::io::SeekFrom;
-use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::vec::Vec;
 
-use fs2::FileExt;
-use time;
-
 use data::{Entry, Hint};
 use log::Log;
-use util::Crc32;
 
 #[derive(Debug)]
 pub struct KeyEntry {
@@ -32,10 +23,7 @@ pub struct CaskInner {
 impl CaskInner {
     pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
         self.key_dir.get(key).and_then(|key_entry| {
-            let entry = self.log.read_entry(key_entry.file_id,
-                                            key_entry.entry_pos,
-                                            key_entry.entry_size,
-                                            key_entry.timestamp);
+            let entry = self.log.read_entry(key_entry.file_id, key_entry.entry_pos);
             if entry.deleted {
                 None
             } else {
