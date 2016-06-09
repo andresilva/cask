@@ -26,6 +26,7 @@ pub struct Log {
     size_threshold: usize,
     lock_file: File,
     current_file_id: u32,
+    active_data_file_path: PathBuf,
     active_data_file: File,
     active_hint_file: File,
     active_hint_file_hasher: XxHash32,
@@ -114,9 +115,12 @@ impl Log {
         lock_file.try_lock_exclusive().unwrap();
 
         let current_file_id = time::now().to_timespec().sec as u32;
-        let active_data_file = get_file_handle(&get_data_file_path(&path, current_file_id), true);
+        let active_data_file_path = get_data_file_path(&path, current_file_id);
+        let active_data_file = get_file_handle(&active_data_file_path, true);
         let active_hint_file = get_file_handle(&get_hint_file_path(&path, current_file_id), true);
         let active_hint_file_hasher = XxHash32::new();
+
+        info!("Created new active data file {:?}", active_data_file_path);
 
         Log {
             path: path,
@@ -125,6 +129,7 @@ impl Log {
             lock_file: lock_file,
             current_file_id: current_file_id,
             active_data_file: active_data_file,
+            active_data_file_path: active_data_file_path,
             active_hint_file: active_hint_file,
             active_hint_file_hasher: active_hint_file_hasher,
         }
@@ -214,7 +219,11 @@ impl Log {
         let mut active_data_file_pos = self.active_data_file.seek(SeekFrom::Current(0)).unwrap();
 
         if active_data_file_pos + entry.size() > self.size_threshold as u64 {
+            info!("Active data file {:?} reached file limit",
+                  self.active_data_file_path);
             self.new_active_file();
+            info!("Created new active data file {:?}",
+                  self.active_data_file_path);
             active_data_file_pos = 0;
         }
 
@@ -242,11 +251,12 @@ impl Log {
 
         self.current_file_id = time::now().to_timespec().sec as u32;
 
-        self.active_data_file =
-            get_file_handle(&get_data_file_path(&self.path, self.current_file_id), true);
+        self.active_data_file_path = get_data_file_path(&self.path, self.current_file_id);
+        self.active_data_file = get_file_handle(&self.active_data_file_path, true);
 
         self.active_hint_file =
             get_file_handle(&get_hint_file_path(&self.path, self.current_file_id), true);
+
         self.active_hint_file_hasher = XxHash32::new();
     }
 }
