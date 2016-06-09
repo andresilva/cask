@@ -8,7 +8,6 @@ use std::vec::Vec;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use fs2::FileExt;
-use time;
 use regex::Regex;
 
 use data::{Entry, Hint};
@@ -49,7 +48,12 @@ impl Log {
 
         let files = find_data_files(&path);
 
-        let current_file_id = time::now().to_timespec().sec as u32;
+        let current_file_id = if files.is_empty() {
+            0
+        } else {
+            files[files.len() - 1] + 1
+        };
+
         let active_data_file_path = get_data_file_path(&path, current_file_id);
         let active_data_file = get_file_handle(&active_data_file_path, true);
         let active_hint_file = get_file_handle(&get_hint_file_path(&path, current_file_id), true);
@@ -162,7 +166,7 @@ impl Log {
     }
 
     fn new_active_file(&mut self) {
-        self.current_file_id = time::now().to_timespec().sec as u32;
+        self.current_file_id += 1;
 
         self.active_data_file_path = get_data_file_path(&self.path, self.current_file_id);
         self.active_data_file = get_file_handle(&self.active_data_file_path, true);
@@ -257,11 +261,13 @@ impl<'a> Drop for RecreateHints<'a> {
 }
 
 fn get_data_file_path(path: &Path, file_id: u32) -> PathBuf {
-    path.join(file_id.to_string()).with_extension(DATA_FILE_EXTENSION)
+    let file_id = format!("{:010}", file_id);
+    path.join(file_id).with_extension(DATA_FILE_EXTENSION)
 }
 
 fn get_hint_file_path(path: &Path, file_id: u32) -> PathBuf {
-    path.join(file_id.to_string()).with_extension(HINT_FILE_EXTENSION)
+    let file_id = format!("{:010}", file_id);
+    path.join(file_id).with_extension(HINT_FILE_EXTENSION)
 }
 
 fn find_data_files(path: &Path) -> Vec<u32> {
