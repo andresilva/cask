@@ -214,21 +214,8 @@ impl Log {
         let mut active_data_file_pos = self.active_data_file.seek(SeekFrom::Current(0)).unwrap();
 
         if active_data_file_pos + entry.size() > self.size_threshold as u64 {
-            if self.sync {
-                self.active_data_file.sync_data().unwrap();
-            }
-
-            self.current_file_id = time::now().to_timespec().sec as u32;
-
-            self.active_data_file =
-                get_file_handle(&get_data_file_path(&self.path, self.current_file_id), true);
-
-            // FIXME: hint file checksum is not being appended
-            self.active_hint_file =
-                get_file_handle(&get_hint_file_path(&self.path, self.current_file_id), true);
-            self.active_hint_file_digest = Crc32::new();
-
-            active_data_file_pos = 0
+            self.new_active_file();
+            active_data_file_pos = 0;
         }
 
         let hint = Hint::new(&entry, active_data_file_pos);
@@ -242,6 +229,25 @@ impl Log {
         }
 
         (self.current_file_id, active_data_file_pos)
+    }
+
+    fn new_active_file(&mut self) {
+        if self.sync {
+            self.active_data_file.sync_data().unwrap();
+        }
+
+        self.active_hint_file
+            .write_u32::<LittleEndian>(self.active_hint_file_digest.sum32())
+            .unwrap();
+
+        self.current_file_id = time::now().to_timespec().sec as u32;
+
+        self.active_data_file =
+            get_file_handle(&get_data_file_path(&self.path, self.current_file_id), true);
+
+        self.active_hint_file =
+            get_file_handle(&get_hint_file_path(&self.path, self.current_file_id), true);
+        self.active_hint_file_digest = Crc32::new();
     }
 }
 
