@@ -6,24 +6,24 @@ use data::{Entry, Hint};
 use log::Log;
 
 #[derive(Debug)]
-pub struct KeyEntry {
+pub struct IndexEntry {
     file_id: u32,
     entry_pos: u64,
     entry_size: u64,
     timestamp: u32,
 }
 
-pub type KeyDir = HashMap<Vec<u8>, KeyEntry>;
+pub type Index = HashMap<Vec<u8>, IndexEntry>;
 
 pub struct CaskInner {
-    key_dir: KeyDir,
+    index: Index,
     log: Log,
 }
 
 impl CaskInner {
     pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
-        self.key_dir.get(key).and_then(|key_entry| {
-            let entry = self.log.read_entry(key_entry.file_id, key_entry.entry_pos);
+        self.index.get(key).and_then(|index_entry| {
+            let entry = self.log.read_entry(index_entry.file_id, index_entry.entry_pos);
             if entry.deleted {
                 None
             } else {
@@ -33,12 +33,12 @@ impl CaskInner {
     }
 
     pub fn put(&mut self, key: Vec<u8>, value: &[u8]) {
-        let key_entry = {
+        let index_entry = {
             let entry = Entry::new(&*key, value);
 
             let (file_id, file_pos) = self.log.write_entry(&entry);
 
-            KeyEntry {
+            IndexEntry {
                 file_id: file_id,
                 entry_pos: file_pos,
                 entry_size: entry.size(),
@@ -46,11 +46,11 @@ impl CaskInner {
             }
         };
 
-        self.key_dir.insert(key, key_entry);
+        self.index.insert(key, index_entry);
     }
 
     pub fn delete(&mut self, key: &[u8]) {
-        if self.key_dir.remove(key).is_some() {
+        if self.index.remove(key).is_some() {
             let entry = Entry::deleted(key);
             let _ = self.log.write_entry(&entry);
         }
@@ -66,22 +66,22 @@ impl Cask {
     pub fn open(path: &str, sync: bool) -> Cask {
         info!("Opening database: {:?}", &path);
         let mut log = Log::open(path, sync);
-        let mut key_dir = KeyDir::new();
+        let mut index = Index::new();
 
         let files = log.find_files();
 
         for file_id in files {
             let mut f = |hint: Hint| {
                 if hint.deleted {
-                    key_dir.remove(&hint.key.into_owned());
+                    index.remove(&hint.key.into_owned());
                 } else {
-                    let key_entry = KeyEntry {
+                    let index_entry = IndexEntry {
                         file_id: file_id,
                         entry_pos: hint.entry_pos,
                         entry_size: hint.entry_size(),
                         timestamp: hint.timestamp,
                     };
-                    key_dir.insert(hint.key.into_owned(), key_entry);
+                    index.insert(hint.key.into_owned(), index_entry);
                 }
             };
 
@@ -104,7 +104,7 @@ impl Cask {
         Cask {
             inner: Arc::new(RwLock::new(CaskInner {
                 log: log,
-                key_dir: key_dir,
+                index: index,
             })),
         }
     }
