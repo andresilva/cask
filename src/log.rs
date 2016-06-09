@@ -32,74 +32,6 @@ pub struct Log {
     active_hint_file_hasher: XxHash32,
 }
 
-pub struct Entries<'a> {
-    data_file: Take<File>,
-    data_file_pos: u64,
-    phantom: PhantomData<&'a ()>,
-}
-
-impl<'a> Iterator for Entries<'a> {
-    type Item = (u64, Entry<'a>);
-
-    fn next(&mut self) -> Option<(u64, Entry<'a>)> {
-        if self.data_file.limit() == 0 {
-            None
-        } else {
-            let entry = Entry::from_read(&mut self.data_file);
-            let entry_pos = self.data_file_pos;
-
-            self.data_file_pos += entry.size();
-
-            Some((entry_pos, entry))
-        }
-    }
-}
-
-pub struct Hints<'a> {
-    hint_file: Take<File>,
-    phantom: PhantomData<&'a ()>,
-}
-
-impl<'a> Iterator for Hints<'a> {
-    type Item = Hint<'a>;
-
-    fn next(&mut self) -> Option<Hint<'a>> {
-        if self.hint_file.limit() == 0 {
-            None
-        } else {
-            Some(Hint::from_read(&mut self.hint_file))
-        }
-    }
-}
-
-pub struct RecreateHints<'a> {
-    hint_file: File,
-    hint_file_hasher: XxHash32,
-    entries: Entries<'a>,
-}
-
-impl<'a> Iterator for RecreateHints<'a> {
-    type Item = Hint<'a>;
-
-    fn next(&mut self) -> Option<Hint<'a>> {
-        self.entries.next().map(|e| {
-            let (entry_pos, entry) = e;
-            let hint = Hint::from(entry, entry_pos);
-            hint.write_bytes(&mut self.hint_file);
-            hint.write_bytes(&mut self.hint_file_hasher);
-            hint
-        })
-    }
-}
-
-impl<'a> Drop for RecreateHints<'a> {
-    fn drop(&mut self) {
-        while self.next().is_some() {}
-        self.hint_file
-            .write_u32::<LittleEndian>(self.hint_file_hasher.get())
-            .unwrap();
-    }
-}
 
 impl Log {
     pub fn open(path: &str, sync: bool) -> Log {
@@ -276,6 +208,75 @@ impl Drop for Log {
             .unwrap();
 
         self.lock_file.unlock().unwrap();
+    }
+}
+
+pub struct Entries<'a> {
+    data_file: Take<File>,
+    data_file_pos: u64,
+    phantom: PhantomData<&'a ()>,
+}
+
+impl<'a> Iterator for Entries<'a> {
+    type Item = (u64, Entry<'a>);
+
+    fn next(&mut self) -> Option<(u64, Entry<'a>)> {
+        if self.data_file.limit() == 0 {
+            None
+        } else {
+            let entry = Entry::from_read(&mut self.data_file);
+            let entry_pos = self.data_file_pos;
+
+            self.data_file_pos += entry.size();
+
+            Some((entry_pos, entry))
+        }
+    }
+}
+
+pub struct Hints<'a> {
+    hint_file: Take<File>,
+    phantom: PhantomData<&'a ()>,
+}
+
+impl<'a> Iterator for Hints<'a> {
+    type Item = Hint<'a>;
+
+    fn next(&mut self) -> Option<Hint<'a>> {
+        if self.hint_file.limit() == 0 {
+            None
+        } else {
+            Some(Hint::from_read(&mut self.hint_file))
+        }
+    }
+}
+
+pub struct RecreateHints<'a> {
+    hint_file: File,
+    hint_file_hasher: XxHash32,
+    entries: Entries<'a>,
+}
+
+impl<'a> Iterator for RecreateHints<'a> {
+    type Item = Hint<'a>;
+
+    fn next(&mut self) -> Option<Hint<'a>> {
+        self.entries.next().map(|e| {
+            let (entry_pos, entry) = e;
+            let hint = Hint::from(entry, entry_pos);
+            hint.write_bytes(&mut self.hint_file);
+            hint.write_bytes(&mut self.hint_file_hasher);
+            hint
+        })
+    }
+}
+
+impl<'a> Drop for RecreateHints<'a> {
+    fn drop(&mut self) {
+        while self.next().is_some() {}
+        self.hint_file
+            .write_u32::<LittleEndian>(self.hint_file_hasher.get())
+            .unwrap();
     }
 }
 
