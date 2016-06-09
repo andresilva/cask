@@ -182,6 +182,16 @@ impl<'a> Hint<'a> {
         }
     }
 
+    pub fn from(e: Entry<'a>, entry_pos: u64) -> Hint<'a> {
+        Hint {
+            key: e.key,
+            entry_pos: entry_pos,
+            value_size: e.value.len() as u32,
+            timestamp: e.timestamp,
+            deleted: e.deleted,
+        }
+    }
+
     pub fn entry_size(&self) -> u64 {
         ENTRY_STATIC_SIZE as u64 + self.key.len() as u64 + self.value_size as u64
     }

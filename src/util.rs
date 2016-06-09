@@ -1,5 +1,7 @@
-use std::result::Result::Ok;
+use std::fs::{File, OpenOptions};
 use std::io::{Result, Write};
+use std::path::Path;
+use std::result::Result::Ok;
 
 use crc::{crc32, Hasher32};
 
@@ -31,4 +33,20 @@ impl Write for Crc32 {
 
 pub fn crc32(buf: &[u8]) -> u32 {
     crc32::checksum_ieee(buf)
+}
+
+pub fn get_file_handle(path: &Path, write: bool) -> File {
+    if write {
+        OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)
+            .unwrap()
+    } else {
+        OpenOptions::new()
+            .read(true)
+            .open(path)
+            .unwrap()
+    }
 }
