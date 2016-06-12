@@ -102,12 +102,12 @@ impl Log {
     pub fn recreate_hints<'a>(&mut self, file_id: u32) -> RecreateHints<'a> {
         let hint_file_path = get_hint_file_path(&self.path, file_id);
         warn!("Re-creating hint file: {:?}", hint_file_path);
-        let hint_file = get_file_handle(&hint_file_path, true);
+
+        let hint_writer = HintWriter::new(&self.path, file_id);
         let entries = self.entries(file_id);
 
         RecreateHints {
-            hint_file: hint_file,
-            hint_file_hasher: XxHash32::new(),
+            hint_writer: hint_writer,
             entries: entries,
         }
     }
@@ -123,7 +123,7 @@ impl Log {
             info!("Active data file {:?} reached file limit",
                   self.active_log_writer.data_file_path);
 
-            self.new_active_file();
+            self.new_active_writer();
         }
 
         let entry_pos = self.active_log_writer.write(entry);
@@ -131,7 +131,7 @@ impl Log {
         (self.current_file_id, entry_pos)
     }
 
-    fn new_active_file(&mut self) {
+    fn new_active_writer(&mut self) {
         self.current_file_id += 1;
 
         info!("Closed active data file {:?}",
@@ -151,27 +151,26 @@ impl Drop for Log {
 }
 
 struct LogWriter {
+    sync: bool,
     data_file_path: PathBuf,
     data_file: File,
     data_file_pos: u64,
-    hint_file: File,
-    hint_file_hasher: XxHash32,
-    sync: bool,
+    hint_writer: HintWriter,
 }
 
 impl LogWriter {
     pub fn new(path: &Path, file_id: u32, sync: bool) -> LogWriter {
         let data_file_path = get_data_file_path(&path, file_id);
         let data_file = get_file_handle(&data_file_path, true);
-        let hint_file = get_file_handle(&get_hint_file_path(&path, file_id), true);
+
+        let hint_writer = HintWriter::new(&path, file_id);
 
         LogWriter {
+            sync: sync,
             data_file_path: data_file_path,
             data_file: data_file,
             data_file_pos: 0,
-            hint_file: hint_file,
-            hint_file_hasher: XxHash32::new(),
-            sync: sync,
+            hint_writer: hint_writer,
         }
     }
 
@@ -180,8 +179,8 @@ impl LogWriter {
 
         let hint = Hint::new(&entry, entry_pos);
         entry.write_bytes(&mut self.data_file);
-        hint.write_bytes(&mut self.hint_file);
-        hint.write_bytes(&mut self.hint_file_hasher);
+
+        self.hint_writer.write(&hint);
 
         if self.sync {
             self.data_file.sync_data().unwrap();
@@ -198,7 +197,32 @@ impl Drop for LogWriter {
         if self.sync {
             self.data_file.sync_data().unwrap();
         }
+    }
+}
 
+struct HintWriter {
+    hint_file: File,
+    hint_file_hasher: XxHash32,
+}
+
+impl HintWriter {
+    pub fn new(path: &Path, file_id: u32) -> HintWriter {
+        let hint_file = get_file_handle(&get_hint_file_path(&path, file_id), true);
+
+        HintWriter {
+            hint_file: hint_file,
+            hint_file_hasher: XxHash32::new(),
+        }
+    }
+
+    pub fn write<'a>(&mut self, hint: &Hint<'a>) {
+        hint.write_bytes(&mut self.hint_file);
+        hint.write_bytes(&mut self.hint_file_hasher);
+    }
+}
+
+impl Drop for HintWriter {
+    fn drop(&mut self) {
         self.hint_file
             .write_u32::<LittleEndian>(self.hint_file_hasher.get())
             .unwrap();
@@ -246,8 +270,7 @@ impl<'a> Iterator for Hints<'a> {
 }
 
 pub struct RecreateHints<'a> {
-    hint_file: File,
-    hint_file_hasher: XxHash32,
+    hint_writer: HintWriter,
     entries: Entries<'a>,
 }
 
@@ -258,8 +281,7 @@ impl<'a> Iterator for RecreateHints<'a> {
         self.entries.next().map(|e| {
             let (entry_pos, entry) = e;
             let hint = Hint::from(entry, entry_pos);
-            hint.write_bytes(&mut self.hint_file);
-            hint.write_bytes(&mut self.hint_file_hasher);
+            self.hint_writer.write(&hint);
             hint
         })
     }
@@ -268,9 +290,6 @@ impl<'a> Iterator for RecreateHints<'a> {
 impl<'a> Drop for RecreateHints<'a> {
     fn drop(&mut self) {
         while self.next().is_some() {}
-        self.hint_file
-            .write_u32::<LittleEndian>(self.hint_file_hasher.get())
-            .unwrap();
     }
 }
 
