@@ -1,28 +1,29 @@
 use std::collections::HashMap;
+use std::collections::hash_map::Entry as HashMapEntry;
 use std::sync::{Arc, RwLock};
 use std::vec::Vec;
 
 use data::{Entry, Hint, SequenceNumber};
-use log::Log;
+use log::{Log, LogWriter};
 
 #[derive(Debug)]
-pub struct IndexEntry {
+struct IndexEntry {
     file_id: u32,
     entry_pos: u64,
     entry_size: u64,
     sequence: SequenceNumber,
 }
 
-pub type Index = HashMap<Vec<u8>, IndexEntry>;
+type Index = HashMap<Vec<u8>, IndexEntry>;
 
-pub struct CaskInner {
+struct CaskInner {
     current_sequence: SequenceNumber,
     index: Index,
     log: Log,
 }
 
 impl CaskInner {
-    pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
+    fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
         self.index.get(key).and_then(|index_entry| {
             let entry = self.log.read_entry(index_entry.file_id, index_entry.entry_pos);
             if entry.deleted {
@@ -36,7 +37,7 @@ impl CaskInner {
         })
     }
 
-    pub fn put(&mut self, key: Vec<u8>, value: &[u8]) {
+    fn put(&mut self, key: Vec<u8>, value: &[u8]) {
         let index_entry = {
             let entry = Entry::new(self.current_sequence, &*key, value);
 
@@ -55,12 +56,57 @@ impl CaskInner {
         self.index.insert(key, index_entry);
     }
 
-    pub fn delete(&mut self, key: &[u8]) {
+    fn delete(&mut self, key: &[u8]) {
         if self.index.remove(key).is_some() {
             let entry = Entry::deleted(self.current_sequence, key);
             let _ = self.log.append_entry(&entry);
             self.current_sequence += 1;
         }
+    }
+
+    fn compact(&self, file_id: u32) {
+        let new_file_id = self.log.new_file_id();
+
+        info!("Compacting data file: {} into: {}", file_id, new_file_id);
+
+        if let Some(hints) = self.log.hints(file_id) {
+            let mut log_writer = LogWriter::new(&self.log.path, new_file_id, false);
+            let mut deletes = HashMap::new();
+
+            {
+                let inserts = hints.filter(|hint| {
+                    let index_entry = self.index.get(&*hint.key);
+
+                    if hint.deleted {
+                        if index_entry.is_none() {
+                            match deletes.entry(hint.key.to_vec()) {
+                                HashMapEntry::Occupied(mut o) => {
+                                    if *o.get() < hint.sequence {
+                                        o.insert(hint.sequence);
+                                    }
+                                }
+                                HashMapEntry::Vacant(e) => {
+                                    e.insert(hint.sequence);
+                                }
+                            }
+                        }
+
+                        false
+
+                    } else {
+                        index_entry.is_some() && index_entry.unwrap().sequence == hint.sequence
+                    }
+                });
+
+                for hint in inserts {
+                    log_writer.write(&self.log.read_entry(file_id, hint.entry_pos));
+                }
+            }
+
+            for (key, sequence) in deletes {
+                log_writer.write(&Entry::deleted(sequence, key));
+            }
+        };
     }
 }
 
@@ -120,6 +166,10 @@ impl Cask {
                 index: index,
             })),
         }
+    }
+
+    pub fn compact(&self, file_id: u32) {
+        self.inner.read().unwrap().compact(file_id);
     }
 
     pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
