@@ -138,14 +138,32 @@ impl Log {
         self.current_file_id.fetch_add(1, Ordering::SeqCst) as u32 + 1
     }
 
-    fn new_active_writer(&mut self) {
-        self.files.push(self.active_file_id);
+    pub fn swap_file(&mut self, file_id: u32, new_file_id: u32) {
+        let idx = self.files.binary_search(&file_id).unwrap();
+        self.files.remove(idx);
 
-        self.active_file_id = self.new_file_id();
+        self.add_file(new_file_id);
+
+        let data_file_path = get_data_file_path(&self.path, file_id);
+        let hint_file_path = get_hint_file_path(&self.path, file_id);
+
+        fs::remove_file(data_file_path).unwrap();
+        fs::remove_file(hint_file_path).unwrap();
+    }
+
+    pub fn add_file(&mut self, file_id: u32) {
+        self.files.push(file_id);
+        self.files.sort();
+    }
+
+    fn new_active_writer(&mut self) {
+        let active_file_id = self.active_file_id;
+        self.add_file(active_file_id);
 
         info!("Closed active data file {:?}",
               self.active_log_writer.data_file_path);
 
+        self.active_file_id = self.new_file_id();
         self.active_log_writer = LogWriter::new(&self.path, self.active_file_id, self.sync);
 
         info!("Created new active data file {:?}",

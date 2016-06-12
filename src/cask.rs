@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Entry as HashMapEntry;
 use std::sync::{Arc, RwLock};
+use std::ops::{Deref, DerefMut};
 use std::vec::Vec;
 
 use data::{Entry, Hint, SequenceNumber};
@@ -14,7 +15,55 @@ struct IndexEntry {
     sequence: SequenceNumber,
 }
 
-type Index = HashMap<Vec<u8>, IndexEntry>;
+struct Index(HashMap<Vec<u8>, IndexEntry>);
+
+impl Index {
+    fn new() -> Index {
+        Index(HashMap::new())
+    }
+
+    fn update(&mut self, hint: Hint, file_id: u32) {
+        match self.entry(hint.key.to_vec()) {
+            HashMapEntry::Occupied(mut o) => {
+                if o.get().sequence <= hint.sequence {
+                    if hint.deleted {
+                        o.remove();
+                    } else {
+                        o.insert(IndexEntry {
+                            file_id: file_id,
+                            entry_pos: hint.entry_pos,
+                            entry_size: hint.entry_size(),
+                            sequence: hint.sequence,
+                        });
+                    }
+                }
+            }
+            HashMapEntry::Vacant(e) => {
+                if !hint.deleted {
+                    e.insert(IndexEntry {
+                        file_id: file_id,
+                        entry_pos: hint.entry_pos,
+                        entry_size: hint.entry_size(),
+                        sequence: hint.sequence,
+                    });
+                }
+            }
+        }
+    }
+}
+
+impl Deref for Index {
+    type Target = HashMap<Vec<u8>, IndexEntry>;
+    fn deref(&self) -> &HashMap<Vec<u8>, IndexEntry> {
+        &self.0
+    }
+}
+
+impl DerefMut for Index {
+    fn deref_mut(&mut self) -> &mut HashMap<Vec<u8>, IndexEntry> {
+        &mut self.0
+    }
+}
 
 struct CaskInner {
     current_sequence: SequenceNumber,
@@ -27,9 +76,11 @@ impl CaskInner {
         self.index.get(key).and_then(|index_entry| {
             let entry = self.log.read_entry(index_entry.file_id, index_entry.entry_pos);
             if entry.deleted {
-                warn!("Index pointed to dead entry: Entry {{ key: {:?}, sequence: {} }}",
+                warn!("Index pointed to dead entry: Entry {{ key: {:?}, sequence: {} }} at file: \
+                       {}",
                       entry.key,
-                      entry.sequence);
+                      entry.sequence,
+                      index_entry.file_id);
                 None
             } else {
                 Some(entry.value.into_owned())
@@ -64,12 +115,11 @@ impl CaskInner {
         }
     }
 
-    fn compact(&self, file_id: u32) {
-        let new_file_id = self.log.new_file_id();
+    fn compact(&self, file_id: u32) -> Option<u32> {
+        self.log.hints(file_id).map(|hints| {
+            let new_file_id = self.log.new_file_id();
+            info!("Compacting data file: {} into: {}", file_id, new_file_id);
 
-        info!("Compacting data file: {} into: {}", file_id, new_file_id);
-
-        if let Some(hints) = self.log.hints(file_id) {
             let mut log_writer = LogWriter::new(&self.log.path, new_file_id, false);
             let mut deletes = HashMap::new();
 
@@ -106,7 +156,9 @@ impl CaskInner {
             for (key, sequence) in deletes {
                 log_writer.write(&Entry::deleted(sequence, key));
             }
-        };
+
+            new_file_id
+        })
     }
 }
 
@@ -129,17 +181,7 @@ impl Cask {
                     sequence = hint.sequence;
                 }
 
-                if hint.deleted {
-                    index.remove(&hint.key.into_owned());
-                } else {
-                    let index_entry = IndexEntry {
-                        file_id: file_id,
-                        entry_pos: hint.entry_pos,
-                        entry_size: hint.entry_size(),
-                        sequence: hint.sequence,
-                    };
-                    index.insert(hint.key.into_owned(), index_entry);
-                }
+                index.update(hint, file_id);
             };
 
             match log.hints(file_id) {
@@ -169,7 +211,27 @@ impl Cask {
     }
 
     pub fn compact(&self, file_id: u32) {
-        self.inner.read().unwrap().compact(file_id);
+        let new_file_id = {
+            self.inner.read().unwrap().compact(file_id)
+        };
+
+        if let Some(new_file_id) = new_file_id {
+            let hints = {
+                self.inner.read().unwrap().log.hints(new_file_id)
+            };
+
+            if let Some(hints) = hints {
+                for hint in hints {
+                    self.inner.write().unwrap().index.update(hint, new_file_id);
+                }
+
+                self.inner.write().unwrap().log.swap_file(file_id, new_file_id);
+
+                info!("Finished compacting data file: {} into: {}",
+                      file_id,
+                      new_file_id);
+            };
+        }
     }
 
     pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
