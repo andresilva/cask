@@ -40,7 +40,7 @@ impl CaskInner {
         let index_entry = {
             let entry = Entry::new(self.current_sequence, &*key, value);
 
-            let (file_id, file_pos) = self.log.write_entry(&entry);
+            let (file_id, file_pos) = self.log.append_entry(&entry);
 
             self.current_sequence += 1;
 
@@ -58,7 +58,7 @@ impl CaskInner {
     pub fn delete(&mut self, key: &[u8]) {
         if self.index.remove(key).is_some() {
             let entry = Entry::deleted(self.current_sequence, key);
-            let _ = self.log.write_entry(&entry);
+            let _ = self.log.append_entry(&entry);
             self.current_sequence += 1;
         }
     }

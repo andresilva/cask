@@ -127,7 +127,7 @@ impl Log {
         Entry::from_read(&mut data_file)
     }
 
-    pub fn write_entry<'a>(&mut self, entry: &Entry<'a>) -> (u32, u64) {
+    pub fn append_entry<'a>(&mut self, entry: &Entry<'a>) -> (u32, u64) {
         let mut active_data_file_pos = self.active_data_file.seek(SeekFrom::Current(0)).unwrap();
 
         if active_data_file_pos + entry.size() > self.size_threshold as u64 {
