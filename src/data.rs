@@ -113,9 +113,18 @@ impl<'a> Entry<'a> {
         let key_size = cursor.read_u16::<LittleEndian>().unwrap();
         let value_size = cursor.read_u32::<LittleEndian>().unwrap();
 
+        let deleted = value_size == ENTRY_TOMBSTONE;
+
+        let value = if deleted {
+            let empty: &[u8] = &[];
+            Cow::from(empty)
+        } else {
+            Cow::from(&bytes[ENTRY_STATIC_SIZE + key_size as usize..])
+        };
+
         Entry {
             key: Cow::from(&bytes[ENTRY_STATIC_SIZE..ENTRY_STATIC_SIZE + key_size as usize]),
-            value: Cow::from(&bytes[ENTRY_STATIC_SIZE + key_size as usize..]),
+            value: value,
             sequence: sequence,
             deleted: value_size == ENTRY_TOMBSTONE,
         }
@@ -157,7 +166,7 @@ impl<'a> Entry<'a> {
 
         Entry {
             key: Cow::from(key),
-            value: Cow::from(value),
+            value: value,
             sequence: sequence,
             deleted: deleted,
         }
@@ -200,7 +209,13 @@ impl<'a> Hint<'a> {
     pub fn write_bytes<W: Write>(&self, writer: &mut W) {
         writer.write_u64::<LittleEndian>(self.sequence).unwrap();
         writer.write_u16::<LittleEndian>(self.key.len() as u16).unwrap();
-        writer.write_u32::<LittleEndian>(self.value_size).unwrap();
+
+        if self.deleted {
+            writer.write_u32::<LittleEndian>(ENTRY_TOMBSTONE).unwrap();
+        } else {
+            writer.write_u32::<LittleEndian>(self.value_size).unwrap();
+        }
+
         writer.write_u64::<LittleEndian>(self.entry_pos).unwrap();
         writer.write(&self.key).unwrap();
     }
@@ -214,10 +229,16 @@ impl<'a> Hint<'a> {
         let mut key = vec![0u8; key_size as usize];
         reader.read_exact(&mut key).unwrap();
 
+        let deleted = value_size == ENTRY_TOMBSTONE;
+
         Hint {
             key: Cow::from(key),
             entry_pos: entry_pos,
-            value_size: value_size,
+            value_size: if deleted {
+                0
+            } else {
+                value_size
+            },
             sequence: sequence,
             deleted: value_size == ENTRY_TOMBSTONE,
         }
