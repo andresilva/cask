@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Entry as HashMapEntry;
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::ops::{Deref, DerefMut};
 use std::vec::Vec;
@@ -7,7 +8,7 @@ use std::vec::Vec;
 use data::{Entry, Hint, SequenceNumber};
 use log::{Log, LogWriter};
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 struct IndexEntry {
     file_id: u32,
     entry_pos: u64,
@@ -114,56 +115,11 @@ impl CaskInner {
             self.current_sequence += 1;
         }
     }
-
-    fn compact(&self, file_id: u32) -> Option<u32> {
-        self.log.hints(file_id).map(|hints| {
-            let new_file_id = self.log.new_file_id();
-            info!("Compacting data file: {} into: {}", file_id, new_file_id);
-
-            let mut log_writer = LogWriter::new(&self.log.path, new_file_id, false);
-            let mut deletes = HashMap::new();
-
-            {
-                let inserts = hints.filter(|hint| {
-                    let index_entry = self.index.get(&*hint.key);
-
-                    if hint.deleted {
-                        if index_entry.is_none() {
-                            match deletes.entry(hint.key.to_vec()) {
-                                HashMapEntry::Occupied(mut o) => {
-                                    if *o.get() < hint.sequence {
-                                        o.insert(hint.sequence);
-                                    }
-                                }
-                                HashMapEntry::Vacant(e) => {
-                                    e.insert(hint.sequence);
-                                }
-                            }
-                        }
-
-                        false
-
-                    } else {
-                        index_entry.is_some() && index_entry.unwrap().sequence == hint.sequence
-                    }
-                });
-
-                for hint in inserts {
-                    log_writer.write(&self.log.read_entry(file_id, hint.entry_pos));
-                }
-            }
-
-            for (key, sequence) in deletes {
-                log_writer.write(&Entry::deleted(sequence, key));
-            }
-
-            new_file_id
-        })
-    }
 }
 
 #[derive(Clone)]
 pub struct Cask {
+    path: PathBuf,
     inner: Arc<RwLock<CaskInner>>,
 }
 
@@ -202,6 +158,7 @@ impl Cask {
         info!("Current sequence number: {:?}", sequence);
 
         Cask {
+            path: log.path.clone(),
             inner: Arc::new(RwLock::new(CaskInner {
                 current_sequence: sequence + 1,
                 log: log,
@@ -210,10 +167,63 @@ impl Cask {
         }
     }
 
-    pub fn compact(&self, file_id: u32) {
-        let new_file_id = {
-            self.inner.read().unwrap().compact(file_id)
+    fn compact_file(&self, file_id: u32) -> Option<u32> {
+        let hints = {
+            self.inner.read().unwrap().log.hints(file_id)
         };
+
+        hints.map(|hints| {
+            let new_file_id = {
+                self.inner.read().unwrap().log.new_file_id()
+            };
+
+            info!("Compacting data file: {} into: {}", file_id, new_file_id);
+
+            let mut log_writer = LogWriter::new(&self.path, new_file_id, false);
+            let mut deletes = HashMap::new();
+
+            {
+                let inserts = hints.filter(|hint| {
+                    let inner = self.inner.read().unwrap();
+                    let index_entry = inner.index.get(&*hint.key);
+
+                    if hint.deleted {
+                        if index_entry.is_none() {
+                            match deletes.entry(hint.key.to_vec()) {
+                                HashMapEntry::Occupied(mut o) => {
+                                    if *o.get() < hint.sequence {
+                                        o.insert(hint.sequence);
+                                    }
+                                }
+                                HashMapEntry::Vacant(e) => {
+                                    e.insert(hint.sequence);
+                                }
+                            }
+                        }
+
+                        false
+
+                    } else {
+                        index_entry.is_some() && index_entry.unwrap().sequence == hint.sequence
+                    }
+                });
+
+                for hint in inserts {
+                    let log = &self.inner.read().unwrap().log;
+                    log_writer.write(&log.read_entry(file_id, hint.entry_pos));
+                }
+            }
+
+            for (key, sequence) in deletes {
+                log_writer.write(&Entry::deleted(sequence, key));
+            }
+
+            new_file_id
+        })
+    }
+
+    pub fn compact(&self, file_id: u32) {
+        let new_file_id = self.compact_file(file_id);
 
         if let Some(new_file_id) = new_file_id {
             let hints = {
