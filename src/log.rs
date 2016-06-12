@@ -26,12 +26,8 @@ pub struct Log {
     lock_file: File,
     files: Vec<u32>,
     current_file_id: u32,
-    active_data_file_path: PathBuf,
-    active_data_file: File,
-    active_hint_file: File,
-    active_hint_file_hasher: XxHash32,
+    active_log_writer: LogWriter,
 }
-
 
 impl Log {
     pub fn open(path: &str, sync: bool) -> Log {
@@ -54,12 +50,10 @@ impl Log {
             files[files.len() - 1] + 1
         };
 
-        let active_data_file_path = get_data_file_path(&path, current_file_id);
-        let active_data_file = get_file_handle(&active_data_file_path, true);
-        let active_hint_file = get_file_handle(&get_hint_file_path(&path, current_file_id), true);
-        let active_hint_file_hasher = XxHash32::new();
+        let active_log_writer = LogWriter::new(&path, current_file_id, sync);
 
-        info!("Created new active data file {:?}", active_data_file_path);
+        info!("Created new active data file {:?}",
+              active_log_writer.data_file_path);
 
         Log {
             path: path,
@@ -68,10 +62,7 @@ impl Log {
             lock_file: lock_file,
             files: files,
             current_file_id: current_file_id,
-            active_data_file: active_data_file,
-            active_data_file_path: active_data_file_path,
-            active_hint_file: active_hint_file,
-            active_hint_file_hasher: active_hint_file_hasher,
+            active_log_writer: active_log_writer,
         }
     }
 
@@ -128,66 +119,89 @@ impl Log {
     }
 
     pub fn append_entry<'a>(&mut self, entry: &Entry<'a>) -> (u32, u64) {
-        let mut active_data_file_pos = self.active_data_file.seek(SeekFrom::Current(0)).unwrap();
-
-        if active_data_file_pos + entry.size() > self.size_threshold as u64 {
+        if self.active_log_writer.data_file_pos + entry.size() > self.size_threshold as u64 {
             info!("Active data file {:?} reached file limit",
-                  self.active_data_file_path);
+                  self.active_log_writer.data_file_path);
 
-            self.close_active_file();
             self.new_active_file();
-
-            active_data_file_pos = 0;
         }
 
-        let hint = Hint::new(&entry, active_data_file_pos);
+        let entry_pos = self.active_log_writer.write(entry);
 
-        entry.write_bytes(&mut self.active_data_file);
-        hint.write_bytes(&mut self.active_hint_file);
-        hint.write_bytes(&mut self.active_hint_file_hasher);
-
-        if self.sync {
-            self.active_data_file.sync_data().unwrap();
-        }
-
-        (self.current_file_id, active_data_file_pos)
-    }
-
-    fn close_active_file(&mut self) {
-        if self.sync {
-            self.active_data_file.sync_data().unwrap();
-        }
-
-        self.active_hint_file
-            .write_u32::<LittleEndian>(self.active_hint_file_hasher.get())
-            .unwrap();
-
-        info!("Closed active data file {:?}", self.active_data_file_path);
+        (self.current_file_id, entry_pos)
     }
 
     fn new_active_file(&mut self) {
         self.current_file_id += 1;
 
-        self.active_data_file_path = get_data_file_path(&self.path, self.current_file_id);
-        self.active_data_file = get_file_handle(&self.active_data_file_path, true);
+        info!("Closed active data file {:?}",
+              self.active_log_writer.data_file_path);
 
-        self.active_hint_file =
-            get_file_handle(&get_hint_file_path(&self.path, self.current_file_id), true);
-
-        self.active_hint_file_hasher = XxHash32::new();
+        self.active_log_writer = LogWriter::new(&self.path, self.current_file_id, self.sync);
 
         info!("Created new active data file {:?}",
-              self.active_data_file_path);
+              self.active_log_writer.data_file_path);
     }
 }
 
 impl Drop for Log {
     fn drop(&mut self) {
-        self.active_hint_file
-            .write_u32::<LittleEndian>(self.active_hint_file_hasher.get())
-            .unwrap();
-
         self.lock_file.unlock().unwrap();
+    }
+}
+
+struct LogWriter {
+    data_file_path: PathBuf,
+    data_file: File,
+    data_file_pos: u64,
+    hint_file: File,
+    hint_file_hasher: XxHash32,
+    sync: bool,
+}
+
+impl LogWriter {
+    pub fn new(path: &Path, file_id: u32, sync: bool) -> LogWriter {
+        let data_file_path = get_data_file_path(&path, file_id);
+        let data_file = get_file_handle(&data_file_path, true);
+        let hint_file = get_file_handle(&get_hint_file_path(&path, file_id), true);
+
+        LogWriter {
+            data_file_path: data_file_path,
+            data_file: data_file,
+            data_file_pos: 0,
+            hint_file: hint_file,
+            hint_file_hasher: XxHash32::new(),
+            sync: sync,
+        }
+    }
+
+    pub fn write<'a>(&mut self, entry: &Entry<'a>) -> u64 {
+        let entry_pos = self.data_file_pos;
+
+        let hint = Hint::new(&entry, entry_pos);
+        entry.write_bytes(&mut self.data_file);
+        hint.write_bytes(&mut self.hint_file);
+        hint.write_bytes(&mut self.hint_file_hasher);
+
+        if self.sync {
+            self.data_file.sync_data().unwrap();
+        }
+
+        self.data_file_pos += entry.size();
+
+        entry_pos
+    }
+}
+
+impl Drop for LogWriter {
+    fn drop(&mut self) {
+        if self.sync {
+            self.data_file.sync_data().unwrap();
+        }
+
+        self.hint_file
+            .write_u32::<LittleEndian>(self.hint_file_hasher.get())
+            .unwrap();
     }
 }
 
