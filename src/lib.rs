@@ -10,6 +10,7 @@ extern crate xxhash2;
 mod cask;
 mod data;
 mod log;
+mod stats;
 mod util;
 
 pub use cask::Cask;

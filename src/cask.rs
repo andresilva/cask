@@ -2,67 +2,82 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry as HashMapEntry;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
-use std::ops::{Deref, DerefMut};
 use std::vec::Vec;
 
 use data::{Entry, Hint, SequenceNumber};
 use log::{Log, LogWriter};
+use stats::Stats;
 
-#[derive(Clone, Copy, Debug)]
-struct IndexEntry {
-    file_id: u32,
+#[derive(Debug)]
+pub struct IndexEntry {
+    pub file_id: u32,
     entry_pos: u64,
-    entry_size: u64,
+    pub entry_size: u64,
     sequence: SequenceNumber,
 }
 
-struct Index(HashMap<Vec<u8>, IndexEntry>);
+struct Index {
+    map: HashMap<Vec<u8>, IndexEntry>,
+    stats: Stats,
+}
 
 impl Index {
     fn new() -> Index {
-        Index(HashMap::new())
+        Index {
+            map: HashMap::new(),
+            stats: Stats::new(),
+        }
+    }
+
+    fn get(&self, key: &[u8]) -> Option<&IndexEntry> {
+        self.map.get(key)
+    }
+
+    fn insert(&mut self, key: Vec<u8>, index_entry: IndexEntry) -> Option<IndexEntry> {
+        self.stats.add_entry(&index_entry);
+        self.map.insert(key, index_entry).map(|entry| {
+            self.stats.remove_entry(&entry);
+            entry
+        })
+    }
+
+    fn remove(&mut self, key: &[u8]) -> Option<IndexEntry> {
+        self.map.remove(key).map(|entry| {
+            self.stats.remove_entry(&entry);
+            entry
+        })
     }
 
     fn update(&mut self, hint: Hint, file_id: u32) {
-        match self.entry(hint.key.to_vec()) {
+        let index_entry = IndexEntry {
+            file_id: file_id,
+            entry_pos: hint.entry_pos,
+            entry_size: hint.entry_size(),
+            sequence: hint.sequence,
+        };
+
+        match self.map.entry(hint.key.to_vec()) {
             HashMapEntry::Occupied(mut o) => {
                 if o.get().sequence <= hint.sequence {
+                    self.stats.remove_entry(o.get());
                     if hint.deleted {
                         o.remove();
                     } else {
-                        o.insert(IndexEntry {
-                            file_id: file_id,
-                            entry_pos: hint.entry_pos,
-                            entry_size: hint.entry_size(),
-                            sequence: hint.sequence,
-                        });
+                        self.stats.add_entry(&index_entry);
+                        o.insert(index_entry);
                     }
+                } else {
+                    self.stats.add_entry(&index_entry);
+                    self.stats.remove_entry(&index_entry);
                 }
             }
             HashMapEntry::Vacant(e) => {
                 if !hint.deleted {
-                    e.insert(IndexEntry {
-                        file_id: file_id,
-                        entry_pos: hint.entry_pos,
-                        entry_size: hint.entry_size(),
-                        sequence: hint.sequence,
-                    });
+                    self.stats.add_entry(&index_entry);
+                    e.insert(index_entry);
                 }
             }
         }
-    }
-}
-
-impl Deref for Index {
-    type Target = HashMap<Vec<u8>, IndexEntry>;
-    fn deref(&self) -> &HashMap<Vec<u8>, IndexEntry> {
-        &self.0
-    }
-}
-
-impl DerefMut for Index {
-    fn deref_mut(&mut self) -> &mut HashMap<Vec<u8>, IndexEntry> {
-        &mut self.0
     }
 }
 
