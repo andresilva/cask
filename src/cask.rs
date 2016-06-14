@@ -1,12 +1,18 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Entry as HashMapEntry;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
+use std::thread;
+use std::time::Duration;
 use std::vec::Vec;
 
 use data::{Entry, Hint, SequenceNumber};
 use log::{Log, LogWriter};
 use stats::Stats;
+
+const COMPACTION_CHECK_FREQUENCY: u64 = 60;
+const FRAGMENTATION_THRESHOLD: f64 = 0.6;
 
 #[derive(Debug)]
 pub struct IndexEntry {
@@ -135,6 +141,7 @@ impl CaskInner {
 #[derive(Clone)]
 pub struct Cask {
     path: PathBuf,
+    dropped: Arc<AtomicBool>,
     inner: Arc<RwLock<CaskInner>>,
 }
 
@@ -172,14 +179,33 @@ impl Cask {
         info!("Opened database: {:?}", &path);
         info!("Current sequence number: {:?}", sequence);
 
-        Cask {
+        let cask = Cask {
             path: log.path.clone(),
+            dropped: Arc::new(AtomicBool::new(false)),
             inner: Arc::new(RwLock::new(CaskInner {
                 current_sequence: sequence + 1,
                 log: log,
                 index: index,
             })),
-        }
+        };
+
+        let caskt = cask.clone();
+        thread::spawn(move || {
+            loop {
+                thread::sleep(Duration::new(COMPACTION_CHECK_FREQUENCY, 0));
+
+                info!("Compaction thread wake up");
+
+                if caskt.dropped.load(Ordering::SeqCst) {
+                    info!("Cask has been dropped, background compaction thread is exiting");
+                    break;
+                }
+
+                caskt.compact();
+            };
+        });
+
+        cask
     }
 
     fn compact_file_aux(&self, file_id: u32) -> Option<u32> {
@@ -293,5 +319,11 @@ impl Cask {
 
     pub fn delete(&self, key: &[u8]) {
         self.inner.write().unwrap().delete(key)
+    }
+}
+
+impl Drop for Cask {
+    fn drop(&mut self) {
+        self.dropped.store(true, Ordering::SeqCst);
     }
 }
