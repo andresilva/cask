@@ -49,4 +49,17 @@ impl Stats {
             }
         }
     }
+
+    pub fn dead_bytes(&self) -> Vec<(u32, u64)> {
+        let mut vec: Vec<_> = self.map.iter().map(|e| (*e.0, e.1.dead_bytes)).collect();
+        vec.sort_by_key(|e| e.1);
+        vec
+    }
+
+    pub fn fragmentation(&self) -> Vec<(u32, f64)> {
+        let mut vec: Vec<_> =
+            self.map.iter().map(|e| (*e.0, e.1.dead_entries as f64 / e.1.entries as f64)).collect();
+        vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        vec
+    }
 }

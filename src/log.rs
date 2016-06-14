@@ -27,7 +27,7 @@ pub struct Log {
     lock_file: File,
     files: Vec<u32>,
     current_file_id: AtomicUsize,
-    active_file_id: u32,
+    pub active_file_id: u32,
     active_log_writer: LogWriter,
 }
 

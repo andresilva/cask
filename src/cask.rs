@@ -182,7 +182,11 @@ impl Cask {
         }
     }
 
-    fn compact_file(&self, file_id: u32) -> Option<u32> {
+    fn compact_file_aux(&self, file_id: u32) -> Option<u32> {
+        if file_id == self.inner.read().unwrap().log.active_file_id {
+            return None;
+        }
+
         let hints = {
             self.inner.read().unwrap().log.hints(file_id)
         };
@@ -237,8 +241,8 @@ impl Cask {
         })
     }
 
-    pub fn compact(&self, file_id: u32) {
-        let new_file_id = self.compact_file(file_id);
+    pub fn compact_file(&self, file_id: u32) {
+        let new_file_id = self.compact_file_aux(file_id);
 
         if let Some(new_file_id) = new_file_id {
             let hints = {
@@ -256,6 +260,26 @@ impl Cask {
                       file_id,
                       new_file_id);
             };
+        }
+    }
+
+    pub fn compact(&self) {
+        let iter = {
+            self.inner
+                .read()
+                .unwrap()
+                .index
+                .stats
+                .fragmentation()
+        };
+
+        for &(file_id, fragmentation) in iter.iter().filter(|e| e.1 >= FRAGMENTATION_THRESHOLD) {
+
+            info!("File {} has fragmentation factor of {}%, adding for compaction",
+                  file_id,
+                  fragmentation * 100.0);
+
+            self.compact_file(file_id);
         }
     }
 
