@@ -18,7 +18,7 @@ const DATA_FILE_EXTENSION: &'static str = "cask.data";
 const HINT_FILE_EXTENSION: &'static str = "cask.hint";
 const LOCK_FILE_NAME: &'static str = "cask.lock";
 
-const DEFAULT_SIZE_THRESHOLD: usize = 100 * 1024 * 1024;
+const DEFAULT_SIZE_THRESHOLD: usize = 2000 * 1024 * 1024;
 
 pub struct Log {
     pub path: PathBuf,
