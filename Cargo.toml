@@ -2,6 +2,11 @@
 name = "cask"
 version = "0.1.0"
 authors = ["Andre Silva"]
+description = "A fast key-value store backed by a log-structured hash table"
+repository = "https://github.com/andrebeat/cask"
+readme = "README.md"
+license = "MIT"
+keywords = ["database"]
 
 [dependencies]
 byteorder = "0.5.1"
