@@ -65,11 +65,11 @@ fn main() {
 
                 let r = rng.next_f64();
                 if r < WRITE_PROBABILITY {
-                    let key = (id * i).to_string().as_bytes().to_vec();
+                    let key = (id * i).to_string();
                     cask.put(key, &vec);
                 } else {
                     let key = ((base_value + (id * i)) * r as usize).to_string();
-                    cask.get(key.as_bytes());
+                    cask.get(key);
                 }
 
                 i += 1

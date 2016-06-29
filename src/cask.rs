@@ -202,7 +202,7 @@ impl Cask {
                 }
 
                 caskt.compact();
-            };
+            }
         });
 
         cask
@@ -309,16 +309,16 @@ impl Cask {
         }
     }
 
-    pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
-        self.inner.read().unwrap().get(key)
+    pub fn get<K: AsRef<[u8]>>(&self, key: K) -> Option<Vec<u8>> {
+        self.inner.read().unwrap().get(key.as_ref())
     }
 
-    pub fn put(&self, key: Vec<u8>, value: &[u8]) {
-        self.inner.write().unwrap().put(key, value)
+    pub fn put<K: Into<Vec<u8>>, V: AsRef<[u8]>>(&self, key: K, value: V) {
+        self.inner.write().unwrap().put(key.into(), value.as_ref())
     }
 
-    pub fn delete(&self, key: &[u8]) {
-        self.inner.write().unwrap().delete(key)
+    pub fn delete<K: AsRef<[u8]>>(&self, key: K) {
+        self.inner.write().unwrap().delete(key.as_ref())
     }
 }
 
