@@ -11,6 +11,8 @@ which is inspired by [bitcask](https://github.com/basho/bitcask/).
 
 * * *
 
+**WARNING**: ⚠️ Please do not trust any valuable data to this yet. ⚠️
+
 ## Installation
 
 Use the [crates.io](http://crates.io/) repository, add this to your Cargo.toml along with the rest
