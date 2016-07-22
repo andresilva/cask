@@ -37,13 +37,21 @@ The basic usage of the library is shown below:
 ```rust
 let cask = Cask::open("test.db", false);
 
-let key = "hello".as_bytes();
-let value = "world".as_bytes();
+let key = "hello";
+let value = "world";
 
-cask.put(key.clone(), &value);
-cask.get(&key);
-cask.delete(&key);
+cask.put(key, value);
+cask.get(key);
+cask.delete(key);
 ```
+
+## TODO
+
+- [ ] Merge files during compaction
+- [ ] Configurable compaction triggers and thresholds
+- [ ] Proper error handling
+- [ ] Add tests
+- [ ] Benchmark
 
 ## License
 
