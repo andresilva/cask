@@ -41,17 +41,21 @@ impl Index {
 
     fn insert(&mut self, key: Vec<u8>, index_entry: IndexEntry) -> Option<IndexEntry> {
         self.stats.add_entry(&index_entry);
-        self.map.insert(key, index_entry).map(|entry| {
-            self.stats.remove_entry(&entry);
-            entry
-        })
+        self.map
+            .insert(key, index_entry)
+            .map(|entry| {
+                self.stats.remove_entry(&entry);
+                entry
+            })
     }
 
     fn remove(&mut self, key: &[u8]) -> Option<IndexEntry> {
-        self.map.remove(key).map(|entry| {
-            self.stats.remove_entry(&entry);
-            entry
-        })
+        self.map
+            .remove(key)
+            .map(|entry| {
+                self.stats.remove_entry(&entry);
+                entry
+            })
     }
 
     fn update(&mut self, hint: Hint, file_id: u32) {
@@ -183,27 +187,26 @@ impl Cask {
             path: log.path.clone(),
             dropped: Arc::new(AtomicBool::new(false)),
             inner: Arc::new(RwLock::new(CaskInner {
-                current_sequence: sequence + 1,
-                log: log,
-                index: index,
-            })),
+                                            current_sequence: sequence + 1,
+                                            log: log,
+                                            index: index,
+                                        })),
         };
 
         let caskt = cask.clone();
-        thread::spawn(move || {
-            loop {
-                thread::sleep(Duration::new(COMPACTION_CHECK_FREQUENCY, 0));
+        thread::spawn(move || loop {
+                          thread::sleep(Duration::new(COMPACTION_CHECK_FREQUENCY, 0));
 
-                info!("Compaction thread wake up");
+                          info!("Compaction thread wake up");
 
-                if caskt.dropped.load(Ordering::SeqCst) {
-                    info!("Cask has been dropped, background compaction thread is exiting");
-                    break;
-                }
+                          if caskt.dropped.load(Ordering::SeqCst) {
+                              info!("Cask has been dropped, background compaction \
+                                     thread is exiting");
+                              break;
+                          }
 
-                caskt.compact();
-            }
-        });
+                          caskt.compact();
+                      });
 
         cask
     }
@@ -280,7 +283,11 @@ impl Cask {
                     self.inner.write().unwrap().index.update(hint, new_file_id);
                 }
 
-                self.inner.write().unwrap().log.swap_file(file_id, new_file_id);
+                self.inner
+                    .write()
+                    .unwrap()
+                    .log
+                    .swap_file(file_id, new_file_id);
 
                 info!("Finished compacting data file: {} into: {}",
                       file_id,
@@ -291,12 +298,7 @@ impl Cask {
 
     pub fn compact(&self) {
         let iter = {
-            self.inner
-                .read()
-                .unwrap()
-                .index
-                .stats
-                .fragmentation()
+            self.inner.read().unwrap().index.stats.fragmentation()
         };
 
         for &(file_id, fragmentation) in iter.iter().filter(|e| e.1 >= FRAGMENTATION_THRESHOLD) {

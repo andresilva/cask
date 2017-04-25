@@ -12,7 +12,7 @@ use fs2::FileExt;
 use regex::Regex;
 
 use data::{Entry, Hint};
-use util::{xxhash32, XxHash32, get_file_handle};
+use util::{XxHash32, get_file_handle, xxhash32};
 
 const DATA_FILE_EXTENSION: &'static str = "cask.data";
 const HINT_FILE_EXTENSION: &'static str = "cask.hint";
@@ -94,9 +94,9 @@ impl Log {
             let hint_file_size = hint_file.metadata().unwrap().len();
 
             Some(Hints {
-                hint_file: hint_file.take(hint_file_size - 4),
-                phantom: PhantomData,
-            })
+                     hint_file: hint_file.take(hint_file_size - 4),
+                     phantom: PhantomData,
+                 })
         } else {
             None
         }
@@ -305,12 +305,14 @@ impl<'a> Iterator for RecreateHints<'a> {
     type Item = Hint<'a>;
 
     fn next(&mut self) -> Option<Hint<'a>> {
-        self.entries.next().map(|e| {
-            let (entry_pos, entry) = e;
-            let hint = Hint::from(entry, entry_pos);
-            self.hint_writer.write(&hint);
-            hint
-        })
+        self.entries
+            .next()
+            .map(|e| {
+                let (entry_pos, entry) = e;
+                let hint = Hint::from(entry, entry_pos);
+                self.hint_writer.write(&hint);
+                hint
+            })
     }
 }
 
@@ -338,7 +340,8 @@ fn find_data_files(path: &Path) -> Vec<u32> {
             Regex::new(&format!("(\\d+).{}$", DATA_FILE_EXTENSION)).unwrap();
     }
 
-    let mut files: Vec<u32> = files.flat_map(|f| {
+    let mut files: Vec<u32> = files
+        .flat_map(|f| {
             let file = f.unwrap();
             let file_metadata = file.metadata().unwrap();
 

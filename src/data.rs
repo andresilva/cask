@@ -4,7 +4,7 @@ use std::io::Cursor;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use util::{xxhash32, XxHash32};
+use util::{XxHash32, xxhash32};
 
 const ENTRY_STATIC_SIZE: usize = 18; // checksum(4) + sequence(8) + key_size(2) + value_size(4)
 const ENTRY_TOMBSTONE: u32 = !0;
@@ -54,13 +54,17 @@ impl<'a> Entry<'a> {
         let mut cursor = Cursor::new(Vec::with_capacity(self.size() as usize));
         cursor.set_position(4);
         cursor.write_u64::<LittleEndian>(self.sequence).unwrap();
-        cursor.write_u16::<LittleEndian>(self.key.len() as u16).unwrap();
+        cursor
+            .write_u16::<LittleEndian>(self.key.len() as u16)
+            .unwrap();
 
         if self.deleted {
             cursor.write_u32::<LittleEndian>(ENTRY_TOMBSTONE).unwrap();
             cursor.write_all(&self.key).unwrap();
         } else {
-            cursor.write_u32::<LittleEndian>(self.value.len() as u32).unwrap();
+            cursor
+                .write_u32::<LittleEndian>(self.value.len() as u32)
+                .unwrap();
             cursor.write_all(&self.key).unwrap();
             cursor.write_all(&self.value).unwrap();
         }
@@ -76,12 +80,16 @@ impl<'a> Entry<'a> {
         let mut cursor = Cursor::new(Vec::with_capacity(ENTRY_STATIC_SIZE));
         cursor.set_position(4);
         cursor.write_u64::<LittleEndian>(self.sequence).unwrap();
-        cursor.write_u16::<LittleEndian>(self.key.len() as u16).unwrap();
+        cursor
+            .write_u16::<LittleEndian>(self.key.len() as u16)
+            .unwrap();
 
         if self.deleted {
             cursor.write_u32::<LittleEndian>(ENTRY_TOMBSTONE).unwrap();
         } else {
-            cursor.write_u32::<LittleEndian>(self.value.len() as u32).unwrap();
+            cursor
+                .write_u32::<LittleEndian>(self.value.len() as u32)
+                .unwrap();
         }
 
         let checksum = {
@@ -208,7 +216,9 @@ impl<'a> Hint<'a> {
 
     pub fn write_bytes<W: Write>(&self, writer: &mut W) {
         writer.write_u64::<LittleEndian>(self.sequence).unwrap();
-        writer.write_u16::<LittleEndian>(self.key.len() as u16).unwrap();
+        writer
+            .write_u16::<LittleEndian>(self.key.len() as u16)
+            .unwrap();
 
         if self.deleted {
             writer.write_u32::<LittleEndian>(ENTRY_TOMBSTONE).unwrap();
@@ -234,11 +244,7 @@ impl<'a> Hint<'a> {
         Hint {
             key: Cow::from(key),
             entry_pos: entry_pos,
-            value_size: if deleted {
-                0
-            } else {
-                value_size
-            },
+            value_size: if deleted { 0 } else { value_size },
             sequence: sequence,
             deleted: value_size == ENTRY_TOMBSTONE,
         }

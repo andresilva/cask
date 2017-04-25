@@ -3,7 +3,7 @@ use std::io::{Result, Write};
 use std::path::Path;
 use std::result::Result::Ok;
 
-use xxhash2::{hash32, State32};
+use xxhash2::{State32, hash32};
 
 pub struct XxHash32(State32);
 
@@ -47,9 +47,6 @@ pub fn get_file_handle(path: &Path, write: bool) -> File {
             .open(path)
             .unwrap()
     } else {
-        OpenOptions::new()
-            .read(true)
-            .open(path)
-            .unwrap()
+        OpenOptions::new().read(true).open(path).unwrap()
     }
 }

@@ -29,11 +29,11 @@ impl Stats {
             }
             HashMapEntry::Vacant(e) => {
                 e.insert(StatsEntry {
-                    entries: 1,
-                    dead_entries: 0,
-                    total_bytes: entry.entry_size,
-                    dead_bytes: 0,
-                });
+                             entries: 1,
+                             dead_entries: 0,
+                             total_bytes: entry.entry_size,
+                             dead_bytes: 0,
+                         });
             }
         }
     }
@@ -57,8 +57,10 @@ impl Stats {
     }
 
     pub fn fragmentation(&self) -> Vec<(u32, f64)> {
-        let mut vec: Vec<_> =
-            self.map.iter().map(|e| (*e.0, e.1.dead_entries as f64 / e.1.entries as f64)).collect();
+        let mut vec: Vec<_> = self.map
+            .iter()
+            .map(|e| (*e.0, e.1.dead_entries as f64 / e.1.entries as f64))
+            .collect();
         vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
         vec
     }
