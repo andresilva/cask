@@ -140,7 +140,7 @@ impl<'a> Entry<'a> {
 
     pub fn from_read<R: Read>(reader: &mut R) -> Entry<'a> {
         let mut header = vec![0u8; ENTRY_STATIC_SIZE as usize];
-        reader.read(&mut header).unwrap();
+        reader.read_exact(&mut header).unwrap();
 
         let mut cursor = Cursor::new(header);
         let checksum = cursor.read_u32::<LittleEndian>().unwrap();
@@ -227,7 +227,7 @@ impl<'a> Hint<'a> {
         }
 
         writer.write_u64::<LittleEndian>(self.entry_pos).unwrap();
-        writer.write(&self.key).unwrap();
+        writer.write_all(&self.key).unwrap();
     }
 
     pub fn from_read<R: Read>(reader: &mut R) -> Hint<'a> {
