@@ -6,7 +6,7 @@ description = "A fast key-value store backed by a log-structured hash table"
 repository = "https://github.com/andrebeat/cask"
 readme = "README.md"
 license = "MIT"
-keywords = ["database"]
+keywords = ["database", "db", "key-value", "kv"]
 
 [dependencies]
 byteorder = "~1.0.0"
