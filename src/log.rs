@@ -345,7 +345,7 @@ fn find_data_files(path: &Path) -> Vec<u32> {
             if file_metadata.is_file() {
                 let file_name = file.file_name();
                 let captures = RE.captures(file_name.to_str().unwrap());
-                captures.and_then(|c| c.at(1).and_then(|n| n.parse::<u32>().ok()))
+                captures.and_then(|c| c.get(1).and_then(|m| m.as_str().parse::<u32>().ok()))
             } else {
                 None
             }

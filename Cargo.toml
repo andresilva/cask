@@ -9,18 +9,18 @@ license = "MIT"
 keywords = ["database"]
 
 [dependencies]
-byteorder = "0.5.1"
-fs2 = "0.2.4"
-lazy_static = "0.2.1"
-log = "0.3"
-regex = "0.1"
-xxhash2 = "0.1"
+byteorder = "~1.0.0"
+fs2 = "~0.4.1"
+lazy_static = "~0.2.8"
+log = "~0.3.7"
+regex = "~0.2.1"
+xxhash2 = "~0.1.0"
 clippy = {version = "*", optional = true}
 
 [dev-dependencies]
-env_logger = "0.3"
-rand = "0.3"
-time = "0.1.35"
+env_logger = "~0.4.2"
+rand = "~0.3.15"
+time = "~0.1.37"
 
 [features]
 default = []
