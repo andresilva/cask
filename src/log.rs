@@ -20,13 +20,25 @@ const LOCK_FILE_NAME: &'static str = "cask.lock";
 
 const DEFAULT_SIZE_THRESHOLD: usize = 2000 * 1024 * 1024;
 
+pub struct CurrentFileId(AtomicUsize);
+
+impl CurrentFileId {
+    pub fn new(id: u32) -> CurrentFileId {
+        CurrentFileId(AtomicUsize::new(id as usize))
+    }
+
+    pub fn increment(&self) -> u32 {
+        self.0.fetch_add(1, Ordering::SeqCst) as u32 + 1
+    }
+}
+
 pub struct Log {
     pub path: PathBuf,
     sync: bool,
     size_threshold: usize,
     lock_file: File,
     files: Vec<u32>,
-    current_file_id: AtomicUsize,
+    pub current_file_id: CurrentFileId,
     pub active_file_id: u32,
     active_log_writer: LogWriter,
 }
@@ -63,7 +75,7 @@ impl Log {
             size_threshold: DEFAULT_SIZE_THRESHOLD,
             lock_file: lock_file,
             files: files,
-            current_file_id: AtomicUsize::new(active_file_id as usize),
+            current_file_id: CurrentFileId::new(active_file_id),
             active_file_id: active_file_id,
             active_log_writer: active_log_writer,
         }
@@ -134,10 +146,6 @@ impl Log {
         (self.active_file_id, entry_pos)
     }
 
-    pub fn new_file_id(&self) -> u32 {
-        self.current_file_id.fetch_add(1, Ordering::SeqCst) as u32 + 1
-    }
-
     pub fn swap_file(&mut self, file_id: u32, new_file_id: u32) {
         let idx = self.files.binary_search(&file_id).unwrap();
         self.files.remove(idx);
@@ -163,7 +171,7 @@ impl Log {
         info!("Closed active data file {:?}",
               self.active_log_writer.data_file_path);
 
-        self.active_file_id = self.new_file_id();
+        self.active_file_id = self.current_file_id.increment();
         self.active_log_writer = LogWriter::new(&self.path, self.active_file_id, self.sync);
 
         info!("Created new active data file {:?}",

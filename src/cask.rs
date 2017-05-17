@@ -222,7 +222,7 @@ impl Cask {
 
         hints.map(|hints| {
             let new_file_id = {
-                self.inner.read().unwrap().log.new_file_id()
+                self.inner.read().unwrap().log.current_file_id.increment()
             };
 
             info!("Compacting data file: {} into: {}", file_id, new_file_id);
