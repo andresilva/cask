@@ -12,6 +12,7 @@ extern crate xxhash2;
 
 mod cask;
 mod data;
+mod errors;
 mod log;
 mod stats;
 mod util;
