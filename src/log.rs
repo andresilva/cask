@@ -130,7 +130,7 @@ impl Log {
     pub fn read_entry<'a>(&self, file_id: u32, entry_pos: u64) -> Entry<'a> {
         let mut data_file = get_file_handle(&get_data_file_path(&self.path, file_id), false);
         data_file.seek(SeekFrom::Start(entry_pos)).unwrap();
-        Entry::from_read(&mut data_file)
+        Entry::from_read(&mut data_file).unwrap()
     }
 
     pub fn append_entry<'a>(&mut self, entry: &Entry<'a>) -> (u32, u64) {
@@ -277,7 +277,7 @@ impl<'a> Iterator for Entries<'a> {
         if self.data_file.limit() == 0 {
             None
         } else {
-            let entry = Entry::from_read(&mut self.data_file);
+            let entry = Entry::from_read(&mut self.data_file).unwrap();
             let entry_pos = self.data_file_pos;
 
             self.data_file_pos += entry.size();
@@ -299,7 +299,7 @@ impl<'a> Iterator for Hints<'a> {
         if self.hint_file.limit() == 0 {
             None
         } else {
-            Some(Hint::from_read(&mut self.hint_file))
+            Some(Hint::from_read(&mut self.hint_file).unwrap())
         }
     }
 }

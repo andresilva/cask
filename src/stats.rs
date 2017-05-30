@@ -50,6 +50,7 @@ impl Stats {
         }
     }
 
+    #[allow(dead_code)]
     pub fn dead_bytes(&self) -> Vec<(u32, u64)> {
         let mut vec: Vec<_> = self.map.iter().map(|e| (*e.0, e.1.dead_bytes)).collect();
         vec.sort_by_key(|e| e.1);
