@@ -1,15 +1,17 @@
 use std::borrow::Cow;
 use std::io::prelude::*;
 use std::io::Cursor;
-use std::result::Result::Ok;
+use std::result::Result::{Err, Ok};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use errors::Result;
+use errors::{Error, Result};
 use util::{XxHash32, xxhash32};
 
 const ENTRY_STATIC_SIZE: usize = 18; // checksum(4) + sequence(8) + key_size(2) + value_size(4)
 const ENTRY_TOMBSTONE: u32 = !0;
+pub const MAX_VALUE_SIZE: u32 = !0 - 1;
+pub const MAX_KEY_SIZE: u16 = !0;
 
 pub type SequenceNumber = u64;
 
@@ -22,19 +24,27 @@ pub struct Entry<'a> {
 }
 
 impl<'a> Entry<'a> {
-    pub fn new<K, V>(sequence: SequenceNumber, key: K, value: V) -> Entry<'a>
+    pub fn new<K, V>(sequence: SequenceNumber, key: K, value: V) -> Result<Entry<'a>>
         where Cow<'a, [u8]>: From<K>,
               Cow<'a, [u8]>: From<V>
     {
         let v = Cow::from(value);
-        assert!(v.len() < ENTRY_TOMBSTONE as usize);
+        let k = Cow::from(key);
 
-        Entry {
-            key: Cow::from(key),
-            value: v,
-            sequence: sequence,
-            deleted: false,
+        if k.len() > MAX_KEY_SIZE as usize {
+            return Err(Error::InvalidKeySize(k.len()));
         }
+
+        if v.len() > MAX_VALUE_SIZE as usize {
+            return Err(Error::InvalidValueSize(v.len()));
+        }
+
+        Ok(Entry {
+               key: k,
+               value: v,
+               sequence: sequence,
+               deleted: false,
+           })
     }
 
     pub fn deleted<K>(sequence: SequenceNumber, key: K) -> Entry<'a>
@@ -260,18 +270,21 @@ mod tests {
         let sequence = 0;
         let key: &[u8] = &[0, 0, 0];
         let value: &[u8] = &[0, 0, 0];
-        let entry = Entry::new(sequence, key, value);
+        let entry = Entry::new(sequence, key, value).unwrap();
         let deleted_entry = Entry::deleted(sequence, key);
 
         assert_eq!(entry.to_bytes().unwrap().len(), 24);
 
-        assert_eq!(entry, Entry::from_bytes(&entry.to_bytes().unwrap()).unwrap());
-        assert_eq!(entry, Entry::from_read(&mut Cursor::new(entry.to_bytes().unwrap())).unwrap());
+        assert_eq!(entry,
+                   Entry::from_bytes(&entry.to_bytes().unwrap()).unwrap());
+        assert_eq!(entry,
+                   Entry::from_read(&mut Cursor::new(entry.to_bytes().unwrap())).unwrap());
         let mut v = Vec::new();
         entry.write_bytes(&mut v).unwrap();
         assert_eq!(entry, Entry::from_bytes(&v).unwrap());
 
-        assert_eq!(deleted_entry, Entry::from_bytes(&deleted_entry.to_bytes().unwrap()).unwrap());
+        assert_eq!(deleted_entry,
+                   Entry::from_bytes(&deleted_entry.to_bytes().unwrap()).unwrap());
         assert_eq!(deleted_entry,
                    Entry::from_read(&mut Cursor::new(deleted_entry.to_bytes().unwrap())).unwrap());
         v.clear();

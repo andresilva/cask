@@ -116,7 +116,7 @@ impl CaskInner {
 
     fn put(&mut self, key: Vec<u8>, value: &[u8]) {
         let index_entry = {
-            let entry = Entry::new(self.current_sequence, &*key, value);
+            let entry = Entry::new(self.current_sequence, &*key, value).unwrap();
 
             let (file_id, file_pos) = self.log.append_entry(&entry);
 
