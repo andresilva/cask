@@ -4,6 +4,7 @@ use std::io::prelude::*;
 use std::io::{Cursor, SeekFrom, Take};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
+use std::result::Result::Ok;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::vec::Vec;
 
@@ -12,6 +13,7 @@ use fs2::FileExt;
 use regex::Regex;
 
 use data::{Entry, Hint};
+use errors::Result;
 use util::{XxHash32, get_file_handle, xxhash32};
 
 const DATA_FILE_EXTENSION: &'static str = "cask.data";
@@ -44,17 +46,17 @@ pub struct Log {
 }
 
 impl Log {
-    pub fn open(path: &str, sync: bool) -> Log {
+    pub fn open(path: &str, sync: bool) -> Result<Log> {
         let path = PathBuf::from(path);
 
         if path.exists() {
             assert!(path.is_dir());
         } else {
-            fs::create_dir(&path).unwrap();
+            fs::create_dir(&path)?;
         }
 
-        let lock_file = File::create(path.join(LOCK_FILE_NAME)).unwrap();
-        lock_file.try_lock_exclusive().unwrap();
+        let lock_file = File::create(path.join(LOCK_FILE_NAME))?;
+        lock_file.try_lock_exclusive()?;
 
         let files = find_data_files(&path);
 
@@ -69,71 +71,71 @@ impl Log {
         info!("Created new active data file {:?}",
               active_log_writer.data_file_path);
 
-        Log {
-            path: path,
-            sync: sync,
-            size_threshold: DEFAULT_SIZE_THRESHOLD,
-            lock_file: lock_file,
-            files: files,
-            current_file_id: CurrentFileId::new(active_file_id),
-            active_file_id: active_file_id,
-            active_log_writer: active_log_writer,
-        }
+        Ok(Log {
+               path: path,
+               sync: sync,
+               size_threshold: DEFAULT_SIZE_THRESHOLD,
+               lock_file: lock_file,
+               files: files,
+               current_file_id: CurrentFileId::new(active_file_id),
+               active_file_id: active_file_id,
+               active_log_writer: active_log_writer,
+           })
     }
 
     pub fn files(&self) -> Vec<u32> {
         self.files.clone()
     }
 
-    pub fn entries<'a>(&self, file_id: u32) -> Entries<'a> {
+    pub fn entries<'a>(&self, file_id: u32) -> Result<Entries<'a>> {
         let data_file_path = get_data_file_path(&self.path, file_id);
         info!("Loading data file: {:?}", data_file_path);
         let data_file = get_file_handle(&data_file_path, false);
-        let data_file_size = data_file.metadata().unwrap().len();
+        let data_file_size = data_file.metadata()?.len();
 
-        Entries {
-            data_file: data_file.take(data_file_size),
-            data_file_pos: 0,
-            phantom: PhantomData,
-        }
+        Ok(Entries {
+               data_file: data_file.take(data_file_size),
+               data_file_pos: 0,
+               phantom: PhantomData,
+           })
     }
 
-    pub fn hints<'a>(&self, file_id: u32) -> Option<Hints<'a>> {
+    pub fn hints<'a>(&self, file_id: u32) -> Result<Option<Hints<'a>>> {
         let hint_file_path = get_hint_file_path(&self.path, file_id);
-        if is_valid_hint_file(&hint_file_path) {
-            info!("Loading hint file: {:?}", hint_file_path);
-            let hint_file = get_file_handle(&hint_file_path, false);
-            let hint_file_size = hint_file.metadata().unwrap().len();
+        Ok(if is_valid_hint_file(&hint_file_path) {
+               info!("Loading hint file: {:?}", hint_file_path);
+               let hint_file = get_file_handle(&hint_file_path, false);
+               let hint_file_size = hint_file.metadata()?.len();
 
-            Some(Hints {
-                     hint_file: hint_file.take(hint_file_size - 4),
-                     phantom: PhantomData,
-                 })
-        } else {
-            None
-        }
+               Some(Hints {
+                        hint_file: hint_file.take(hint_file_size - 4),
+                        phantom: PhantomData,
+                    })
+           } else {
+               None
+           })
     }
 
-    pub fn recreate_hints<'a>(&mut self, file_id: u32) -> RecreateHints<'a> {
+    pub fn recreate_hints<'a>(&mut self, file_id: u32) -> Result<RecreateHints<'a>> {
         let hint_file_path = get_hint_file_path(&self.path, file_id);
         warn!("Re-creating hint file: {:?}", hint_file_path);
 
         let hint_writer = HintWriter::new(&self.path, file_id);
-        let entries = self.entries(file_id);
+        let entries = self.entries(file_id)?;
 
-        RecreateHints {
-            hint_writer: hint_writer,
-            entries: entries,
-        }
+        Ok(RecreateHints {
+               hint_writer: hint_writer,
+               entries: entries,
+           })
     }
 
-    pub fn read_entry<'a>(&self, file_id: u32, entry_pos: u64) -> Entry<'a> {
+    pub fn read_entry<'a>(&self, file_id: u32, entry_pos: u64) -> Result<Entry<'a>> {
         let mut data_file = get_file_handle(&get_data_file_path(&self.path, file_id), false);
-        data_file.seek(SeekFrom::Start(entry_pos)).unwrap();
-        Entry::from_read(&mut data_file).unwrap()
+        data_file.seek(SeekFrom::Start(entry_pos))?;
+        Entry::from_read(&mut data_file)
     }
 
-    pub fn append_entry<'a>(&mut self, entry: &Entry<'a>) -> (u32, u64) {
+    pub fn append_entry<'a>(&mut self, entry: &Entry<'a>) -> Result<(u32, u64)> {
         if self.active_log_writer.data_file_pos + entry.size() > self.size_threshold as u64 {
             info!("Active data file {:?} reached file limit",
                   self.active_log_writer.data_file_path);
@@ -141,9 +143,9 @@ impl Log {
             self.new_active_writer();
         }
 
-        let entry_pos = self.active_log_writer.write(entry);
+        let entry_pos = self.active_log_writer.write(entry)?;
 
-        (self.active_file_id, entry_pos)
+        Ok((self.active_file_id, entry_pos))
     }
 
     pub fn swap_file(&mut self, file_id: u32, new_file_id: u32) {
@@ -209,21 +211,21 @@ impl LogWriter {
         }
     }
 
-    pub fn write<'a>(&mut self, entry: &Entry<'a>) -> u64 {
+    pub fn write<'a>(&mut self, entry: &Entry<'a>) -> Result<u64> {
         let entry_pos = self.data_file_pos;
 
         let hint = Hint::new(entry, entry_pos);
-        entry.write_bytes(&mut self.data_file);
+        entry.write_bytes(&mut self.data_file)?;
 
-        self.hint_writer.write(&hint);
+        self.hint_writer.write(&hint)?;
 
         if self.sync {
-            self.data_file.sync_data().unwrap();
+            self.data_file.sync_data()?;
         }
 
         self.data_file_pos += entry.size();
 
-        entry_pos
+        Ok(entry_pos)
     }
 }
 
@@ -250,9 +252,10 @@ impl HintWriter {
         }
     }
 
-    pub fn write<'a>(&mut self, hint: &Hint<'a>) {
-        hint.write_bytes(&mut self.hint_file);
-        hint.write_bytes(&mut self.hint_file_hasher);
+    pub fn write<'a>(&mut self, hint: &Hint<'a>) -> Result<()> {
+        hint.write_bytes(&mut self.hint_file)?;
+        hint.write_bytes(&mut self.hint_file_hasher)?;
+        Ok(())
     }
 }
 

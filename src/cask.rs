@@ -100,7 +100,7 @@ struct CaskInner {
 impl CaskInner {
     fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
         self.index.get(key).and_then(|index_entry| {
-            let entry = self.log.read_entry(index_entry.file_id, index_entry.entry_pos);
+            let entry = self.log.read_entry(index_entry.file_id, index_entry.entry_pos).unwrap();
             if entry.deleted {
                 warn!("Index pointed to dead entry: Entry {{ key: {:?}, sequence: {} }} at file: \
                        {}",
@@ -118,7 +118,7 @@ impl CaskInner {
         let index_entry = {
             let entry = Entry::new(self.current_sequence, &*key, value).unwrap();
 
-            let (file_id, file_pos) = self.log.append_entry(&entry);
+            let (file_id, file_pos) = self.log.append_entry(&entry).unwrap();
 
             self.current_sequence += 1;
 
@@ -152,7 +152,7 @@ pub struct Cask {
 impl Cask {
     pub fn open(path: &str, sync: bool) -> Cask {
         info!("Opening database: {:?}", &path);
-        let mut log = Log::open(path, sync);
+        let mut log = Log::open(path, sync).unwrap();
         let mut index = Index::new();
 
         let mut sequence = 0;
@@ -166,14 +166,14 @@ impl Cask {
                 index.update(hint, file_id);
             };
 
-            match log.hints(file_id) {
+            match log.hints(file_id).unwrap() {
                 Some(hints) => {
                     for hint in hints {
                         f(hint);
                     }
                 }
                 None => {
-                    for hint in log.recreate_hints(file_id) {
+                    for hint in log.recreate_hints(file_id).unwrap() {
                         f(hint);
                     }
                 }
@@ -217,7 +217,7 @@ impl Cask {
         }
 
         let hints = {
-            self.inner.read().unwrap().log.hints(file_id)
+            self.inner.read().unwrap().log.hints(file_id).unwrap()
         };
 
         hints.map(|hints| {
@@ -258,12 +258,12 @@ impl Cask {
 
                 for hint in inserts {
                     let log = &self.inner.read().unwrap().log;
-                    log_writer.write(&log.read_entry(file_id, hint.entry_pos));
+                    log_writer.write(&log.read_entry(file_id, hint.entry_pos).unwrap()).unwrap();
                 }
             }
 
             for (key, sequence) in deletes {
-                log_writer.write(&Entry::deleted(sequence, key));
+                log_writer.write(&Entry::deleted(sequence, key)).unwrap();
             }
 
             new_file_id
@@ -275,7 +275,7 @@ impl Cask {
 
         if let Some(new_file_id) = new_file_id {
             let hints = {
-                self.inner.read().unwrap().log.hints(new_file_id)
+                self.inner.read().unwrap().log.hints(new_file_id).unwrap()
             };
 
             if let Some(hints) = hints {
