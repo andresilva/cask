@@ -123,7 +123,15 @@ impl<'a> Entry<'a> {
         let mut cursor = Cursor::new(bytes);
 
         let checksum = cursor.read_u32::<LittleEndian>()?;
-        assert_eq!(xxhash32(&bytes[4..]), checksum);
+
+        let hash = xxhash32(&bytes[4..]);
+
+        if hash != checksum {
+            return Err(Error::InvalidChecksum {
+                           expected: checksum,
+                           found: hash,
+                       });
+        }
 
         let sequence = cursor.read_u64::<LittleEndian>()?;
         let key_size = cursor.read_u16::<LittleEndian>()?;
@@ -178,7 +186,12 @@ impl<'a> Entry<'a> {
             hasher.get()
         };
 
-        assert_eq!(hash, checksum);
+        if hash != checksum {
+            return Err(Error::InvalidChecksum {
+                           expected: checksum,
+                           found: hash,
+                       });
+        }
 
         Ok(Entry {
                key: Cow::from(key),
