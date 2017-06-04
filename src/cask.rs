@@ -169,12 +169,12 @@ impl Cask {
             match log.hints(file_id).unwrap() {
                 Some(hints) => {
                     for hint in hints {
-                        f(hint);
+                        f(hint.unwrap());
                     }
                 }
                 None => {
                     for hint in log.recreate_hints(file_id).unwrap() {
-                        f(hint);
+                        f(hint.unwrap());
                     }
                 }
             };
@@ -220,54 +220,62 @@ impl Cask {
             self.inner.read().unwrap().log.hints(file_id).unwrap()
         };
 
-        hints.map(|hints| {
-            let new_file_id = {
-                self.inner.read().unwrap().log.current_file_id.increment()
-            };
+        match hints {
+            Some(hints) => {
+                let new_file_id = {
+                    // FIXME: turn into error
+                    self.inner.read().unwrap().log.current_file_id.increment()
+                };
 
-            info!("Compacting data file: {} into: {}", file_id, new_file_id);
+                info!("Compacting data file: {} into: {}", file_id, new_file_id);
 
-            let mut log_writer = LogWriter::new(&self.path, new_file_id, false);
-            let mut deletes = HashMap::new();
+                let mut log_writer = LogWriter::new(&self.path, new_file_id, false).unwrap();
+                let mut deletes = HashMap::new();
 
-            {
-                let inserts = hints.filter(|hint| {
-                    let inner = self.inner.read().unwrap();
-                    let index_entry = inner.index.get(&*hint.key);
+                {
+                    let mut inserts = Vec::new();
 
-                    if hint.deleted {
-                        if index_entry.is_none() {
-                            match deletes.entry(hint.key.to_vec()) {
-                                HashMapEntry::Occupied(mut o) => {
-                                    if *o.get() < hint.sequence {
-                                        o.insert(hint.sequence);
+                    for hint in hints {
+                        let hint = hint.unwrap();
+                        let inner = self.inner.read().unwrap();
+                        let index_entry = inner.index.get(&*hint.key);
+
+                        if hint.deleted {
+                            if index_entry.is_none() {
+                                match deletes.entry(hint.key.to_vec()) {
+                                    HashMapEntry::Occupied(mut o) => {
+                                        if *o.get() < hint.sequence {
+                                            o.insert(hint.sequence);
+                                        }
+                                    }
+                                    HashMapEntry::Vacant(e) => {
+                                        e.insert(hint.sequence);
                                     }
                                 }
-                                HashMapEntry::Vacant(e) => {
-                                    e.insert(hint.sequence);
-                                }
                             }
+                        } else if index_entry.is_some() &&
+                                  index_entry.unwrap().sequence == hint.sequence {
+                            inserts.push(hint)
                         }
-
-                        false
-
-                    } else {
-                        index_entry.is_some() && index_entry.unwrap().sequence == hint.sequence
                     }
-                });
 
-                for hint in inserts {
-                    let log = &self.inner.read().unwrap().log;
-                    log_writer.write(&log.read_entry(file_id, hint.entry_pos).unwrap()).unwrap();
+                    for hint in inserts {
+                        // FIXME: turn into error
+                        let log = &self.inner.read().unwrap().log;
+                        log_writer
+                            .write(&log.read_entry(file_id, hint.entry_pos).unwrap())
+                            .unwrap();
+                    }
                 }
-            }
 
-            for (key, sequence) in deletes {
-                log_writer.write(&Entry::deleted(sequence, key)).unwrap();
-            }
+                for (key, sequence) in deletes {
+                    log_writer.write(&Entry::deleted(sequence, key)).unwrap();
+                }
 
-            new_file_id
-        })
+                Some(new_file_id)
+            }
+            _ => None,
+        }
     }
 
     pub fn compact_file(&self, file_id: u32) {
@@ -280,6 +288,7 @@ impl Cask {
 
             if let Some(hints) = hints {
                 for hint in hints {
+                    let hint = hint.unwrap();
                     self.inner.write().unwrap().index.update(hint, new_file_id);
                 }
 
@@ -287,7 +296,8 @@ impl Cask {
                     .write()
                     .unwrap()
                     .log
-                    .swap_file(file_id, new_file_id);
+                    .swap_file(file_id, new_file_id)
+                    .unwrap();
 
                 info!("Finished compacting data file: {} into: {}",
                       file_id,

@@ -10,6 +10,7 @@ use data::{MAX_KEY_SIZE, MAX_VALUE_SIZE};
 #[derive(Debug)]
 pub enum Error {
     Io(io::Error),
+    InvalidFileId(u32),
     InvalidKeySize(usize),
     InvalidValueSize(usize),
     InvalidChecksum { expected: u32, found: u32 },
@@ -21,6 +22,7 @@ impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match *self {
             Error::Io(ref err) => write!(f, "IO error: {}", err),
+            Error::InvalidFileId(file_id) => write!(f, "Invalid file id: {}", file_id),
             Error::InvalidKeySize(size) => {
                 write!(f,
                        "Invalid key size, max: {}, found: {}",
@@ -54,6 +56,7 @@ impl error::Error for Error {
     fn description(&self) -> &str {
         match *self {
             Error::Io(ref err) => err.description(),
+            Error::InvalidFileId(..) => "Invalid file id",
             Error::InvalidChecksum { .. } => "Invalid checksum",
             Error::InvalidKeySize(..) => "Invalid key size",
             Error::InvalidValueSize(..) => "Invalid value size",

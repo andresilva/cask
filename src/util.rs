@@ -38,15 +38,14 @@ pub fn xxhash32(buf: &[u8]) -> u32 {
     hash32(buf, 0)
 }
 
-pub fn get_file_handle(path: &Path, write: bool) -> File {
+pub fn get_file_handle(path: &Path, write: bool) -> Result<File> {
     if write {
         OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
             .open(path)
-            .unwrap()
     } else {
-        OpenOptions::new().read(true).open(path).unwrap()
+        OpenOptions::new().read(true).open(path)
     }
 }
