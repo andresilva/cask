@@ -2,6 +2,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{Result, Write};
 use std::path::Path;
 use std::result::Result::Ok;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use xxhash2::{State32, hash32};
 
@@ -47,5 +48,17 @@ pub fn get_file_handle(path: &Path, write: bool) -> Result<File> {
             .open(path)
     } else {
         OpenOptions::new().read(true).open(path)
+    }
+}
+
+pub struct Sequence(AtomicUsize);
+
+impl Sequence {
+    pub fn new(id: u32) -> Sequence {
+        Sequence(AtomicUsize::new(id as usize))
+    }
+
+    pub fn increment(&self) -> u32 {
+        self.0.fetch_add(1, Ordering::SeqCst) as u32 + 1
     }
 }

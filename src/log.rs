@@ -5,7 +5,6 @@ use std::io::{Cursor, SeekFrom, Take};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::result::Result::Ok;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::vec::Vec;
 
@@ -15,7 +14,7 @@ use regex::Regex;
 
 use data::{Entry, Hint};
 use errors::{Error, Result};
-use util::{XxHash32, get_file_handle, xxhash32};
+use util::{Sequence, XxHash32, get_file_handle, xxhash32};
 
 const DATA_FILE_EXTENSION: &'static str = "cask.data";
 const HINT_FILE_EXTENSION: &'static str = "cask.hint";
@@ -23,25 +22,13 @@ const LOCK_FILE_NAME: &'static str = "cask.lock";
 
 const DEFAULT_SIZE_THRESHOLD: usize = 2000 * 1024 * 1024;
 
-pub struct CurrentFileId(AtomicUsize);
-
-impl CurrentFileId {
-    pub fn new(id: u32) -> CurrentFileId {
-        CurrentFileId(AtomicUsize::new(id as usize))
-    }
-
-    pub fn increment(&self) -> u32 {
-        self.0.fetch_add(1, Ordering::SeqCst) as u32 + 1
-    }
-}
-
 pub struct Log {
     pub path: PathBuf,
     sync: bool,
     pub size_threshold: usize,
     lock_file: File,
     files: Vec<u32>,
-    pub current_file_id: Arc<CurrentFileId>,
+    pub file_id_seq: Arc<Sequence>,
     pub active_file_id: u32,
     active_log_writer: LogWriter,
 }
@@ -69,13 +56,13 @@ impl Log {
 
         let size_threshold = DEFAULT_SIZE_THRESHOLD;
 
-        let current_file_id = Arc::new(CurrentFileId::new(active_file_id));
+        let file_id_seq = Arc::new(Sequence::new(active_file_id));
 
         let active_log_writer = LogWriter::new(&path,
                                                active_file_id,
                                                sync,
                                                size_threshold,
-                                               current_file_id.clone())?;
+                                               file_id_seq.clone())?;
 
         info!("Created new active data file {:?}",
               active_log_writer.data_file_path);
@@ -86,7 +73,7 @@ impl Log {
                size_threshold: size_threshold,
                lock_file: lock_file,
                files: files,
-               current_file_id: current_file_id,
+               file_id_seq: file_id_seq,
                active_file_id: active_file_id,
                active_log_writer: active_log_writer,
            })
@@ -187,12 +174,12 @@ impl Log {
         info!("Closed active data file {:?}",
               self.active_log_writer.data_file_path);
 
-        self.active_file_id = self.current_file_id.increment();
+        self.active_file_id = self.file_id_seq.increment();
         self.active_log_writer = LogWriter::new(&self.path,
                                                 self.active_file_id,
                                                 self.sync,
                                                 self.size_threshold,
-                                                self.current_file_id.clone())?;
+                                                self.file_id_seq.clone())?;
 
         info!("Created new active data file {:?}",
               self.active_log_writer.data_file_path);
@@ -211,9 +198,9 @@ pub struct LogWriter {
     sync: bool,
     size_threshold: usize,
     data_file_path: PathBuf,
-    data_file: File,
+    data_file: File, // TODO: wrap in cell to initialize lazily
     data_file_pos: u64,
-    current_file_id: Arc<CurrentFileId>,
+    file_id_seq: Arc<Sequence>,
     hint_writer: HintWriter,
 }
 
@@ -222,7 +209,7 @@ impl LogWriter {
                file_id: u32,
                sync: bool,
                size_threshold: usize,
-               current_file_id: Arc<CurrentFileId>)
+               file_id_seq: Arc<Sequence>)
                -> Result<LogWriter> {
         let data_file_path = get_data_file_path(path, file_id);
         let data_file = get_file_handle(&data_file_path, true)?;
@@ -235,7 +222,7 @@ impl LogWriter {
                data_file_path: data_file_path,
                data_file: data_file,
                data_file_pos: 0,
-               current_file_id: current_file_id,
+               file_id_seq: file_id_seq,
                hint_writer: hint_writer,
            })
     }

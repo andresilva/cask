@@ -234,13 +234,13 @@ impl Cask {
 
         Ok(match hints {
                Some(hints) => {
-                   let (size_threshold, current_file_id) = {
+                   let (size_threshold, file_id_seq) = {
                        // FIXME: turn into error
                        let log = &self.inner.read().unwrap().log;
-                       (log.size_threshold, log.current_file_id.clone())
+                       (log.size_threshold, log.file_id_seq.clone())
                    };
 
-                   let new_file_id = current_file_id.increment();
+                   let new_file_id = file_id_seq.increment();
 
                    info!("Compacting data file: {} into: {}", file_id, new_file_id);
 
@@ -249,7 +249,7 @@ impl Cask {
                                                                   new_file_id,
                                                                   false,
                                                                   size_threshold,
-                                                                  current_file_id)?;
+                                                                  file_id_seq)?;
                    let mut deletes = HashMap::new();
 
                    {
