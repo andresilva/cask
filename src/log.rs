@@ -6,6 +6,7 @@ use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::result::Result::Ok;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::vec::Vec;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -37,10 +38,10 @@ impl CurrentFileId {
 pub struct Log {
     pub path: PathBuf,
     sync: bool,
-    size_threshold: usize,
+    pub size_threshold: usize,
     lock_file: File,
     files: Vec<u32>,
-    pub current_file_id: CurrentFileId,
+    pub current_file_id: Arc<CurrentFileId>,
     pub active_file_id: u32,
     active_log_writer: LogWriter,
 }
@@ -66,7 +67,15 @@ impl Log {
             files[files.len() - 1] + 1
         };
 
-        let active_log_writer = LogWriter::new(&path, active_file_id, sync)?;
+        let size_threshold = DEFAULT_SIZE_THRESHOLD;
+
+        let current_file_id = Arc::new(CurrentFileId::new(active_file_id));
+
+        let active_log_writer = LogWriter::new(&path,
+                                               active_file_id,
+                                               sync,
+                                               size_threshold,
+                                               current_file_id.clone())?;
 
         info!("Created new active data file {:?}",
               active_log_writer.data_file_path);
@@ -74,10 +83,10 @@ impl Log {
         Ok(Log {
                path: path,
                sync: sync,
-               size_threshold: DEFAULT_SIZE_THRESHOLD,
+               size_threshold: size_threshold,
                lock_file: lock_file,
                files: files,
-               current_file_id: CurrentFileId::new(active_file_id),
+               current_file_id: current_file_id,
                active_file_id: active_file_id,
                active_log_writer: active_log_writer,
            })
@@ -179,7 +188,11 @@ impl Log {
               self.active_log_writer.data_file_path);
 
         self.active_file_id = self.current_file_id.increment();
-        self.active_log_writer = LogWriter::new(&self.path, self.active_file_id, self.sync)?;
+        self.active_log_writer = LogWriter::new(&self.path,
+                                                self.active_file_id,
+                                                self.sync,
+                                                self.size_threshold,
+                                                self.current_file_id.clone())?;
 
         info!("Created new active data file {:?}",
               self.active_log_writer.data_file_path);
@@ -196,14 +209,21 @@ impl Drop for Log {
 
 pub struct LogWriter {
     sync: bool,
+    size_threshold: usize,
     data_file_path: PathBuf,
     data_file: File,
     data_file_pos: u64,
+    current_file_id: Arc<CurrentFileId>,
     hint_writer: HintWriter,
 }
 
 impl LogWriter {
-    pub fn new(path: &Path, file_id: u32, sync: bool) -> Result<LogWriter> {
+    pub fn new(path: &Path,
+               file_id: u32,
+               sync: bool,
+               size_threshold: usize,
+               current_file_id: Arc<CurrentFileId>)
+               -> Result<LogWriter> {
         let data_file_path = get_data_file_path(path, file_id);
         let data_file = get_file_handle(&data_file_path, true)?;
 
@@ -211,9 +231,11 @@ impl LogWriter {
 
         Ok(LogWriter {
                sync: sync,
+               size_threshold: size_threshold,
                data_file_path: data_file_path,
                data_file: data_file,
                data_file_pos: 0,
+               current_file_id: current_file_id,
                hint_writer: hint_writer,
            })
     }

@@ -234,14 +234,22 @@ impl Cask {
 
         Ok(match hints {
                Some(hints) => {
-                   let new_file_id = {
+                   let (size_threshold, current_file_id) = {
                        // FIXME: turn into error
-                       self.inner.read().unwrap().log.current_file_id.increment()
+                       let log = &self.inner.read().unwrap().log;
+                       (log.size_threshold, log.current_file_id.clone())
                    };
+
+                   let new_file_id = current_file_id.increment();
 
                    info!("Compacting data file: {} into: {}", file_id, new_file_id);
 
-                   let mut log_writer = LogWriter::new(&self.path, new_file_id, false)?;
+                   // FIXME: create writer() method on Log
+                   let mut log_writer: LogWriter = LogWriter::new(&self.path,
+                                                                  new_file_id,
+                                                                  false,
+                                                                  size_threshold,
+                                                                  current_file_id)?;
                    let mut deletes = HashMap::new();
 
                    {
