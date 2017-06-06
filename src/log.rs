@@ -148,25 +148,28 @@ impl Log {
                        self.file_id_seq.clone())
     }
 
-    pub fn swap_file(&mut self, file_id: u32, new_file_id: u32) -> Result<()> {
-        let idx = self.files
-            .binary_search(&file_id)
-            .map_err(|_| Error::InvalidFileId(file_id))?;
+    pub fn swap_files(&mut self, old_files: &[u32], new_files: &[u32]) -> Result<()> {
+        for &file_id in old_files {
+            let idx = self.files
+                .binary_search(&file_id)
+                .map_err(|_| Error::InvalidFileId(file_id))?;
 
-        self.files.remove(idx);
+            self.files.remove(idx);
 
-        self.add_file(new_file_id);
+            let data_file_path = get_data_file_path(&self.path, file_id);
+            let hint_file_path = get_hint_file_path(&self.path, file_id);
 
-        let data_file_path = get_data_file_path(&self.path, file_id);
-        let hint_file_path = get_hint_file_path(&self.path, file_id);
+            fs::remove_file(data_file_path)?;
+            let _ = fs::remove_file(hint_file_path);
+        }
 
-        fs::remove_file(data_file_path)?;
-        fs::remove_file(hint_file_path)?;
+        self.files.extend(new_files);
+        self.files.sort();
 
         Ok(())
     }
 
-    pub fn add_file(&mut self, file_id: u32) {
+    fn add_file(&mut self, file_id: u32) {
         self.files.push(file_id);
         self.files.sort();
     }

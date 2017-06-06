@@ -62,7 +62,7 @@ impl Stats {
             .iter()
             .map(|e| (*e.0, e.1.dead_entries as f64 / e.1.entries as f64))
             .collect();
-        vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        vec.sort_by(|&a, b| a.0.partial_cmp(&b.0).unwrap());
         vec
     }
 }

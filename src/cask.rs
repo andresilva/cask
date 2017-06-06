@@ -225,130 +225,135 @@ impl Cask {
         Ok(cask)
     }
 
-    fn compact_file_aux(&self, file_id: u32) -> Result<Option<u32>> {
+    fn compact_files_aux(&self, files: &[u32]) -> Result<(Vec<u32>, Vec<u32>)> {
         let active_file_id = {
             self.inner.read().unwrap().log.active_file_id
         };
 
-        if active_file_id.is_some() && active_file_id.unwrap() == file_id {
-            return Ok(None);
-        }
+        let compacted_files_hints = files
+            .iter()
+            .flat_map(|&file_id| {
+                if active_file_id.is_some() && active_file_id.unwrap() == file_id {
+                    None
+                } else {
+                    self.inner
+                        .read()
+                        .unwrap()
+                        .log
+                        .hints(file_id)
+                        .ok() // FIXME: log the error?
+                        .and_then(|hints| hints.map(|h| (file_id, h)))
+                }
+            });
 
-        let hints = {
-            self.inner.read().unwrap().log.hints(file_id)?
+        let mut compacted_files = Vec::new();
+        let mut new_files = Vec::new();
+        let mut deletes = HashMap::new();
+
+        let mut log_writer = {
+            // FIXME: turn into error
+            self.inner.read().unwrap().log.writer()
         };
 
-        Ok(match hints {
-               Some(hints) => {
-                   let mut log_writer = {
-                       // FIXME: turn into error
-                       self.inner.read().unwrap().log.writer()
-                   };
+        for (file_id, hints) in compacted_files_hints {
+            let mut inserts = Vec::new();
 
-                   info!("Compacting data file: {}", file_id);
+            for hint in hints {
+                let hint = hint?;
+                let inner = self.inner.read().unwrap();
+                let index_entry = inner.index.get(&*hint.key);
 
-                   let mut files = Vec::new();
-                   let mut deletes = HashMap::new();
+                if hint.deleted {
+                    if index_entry.is_none() {
+                        match deletes.entry(hint.key.to_vec()) {
+                            HashMapEntry::Occupied(mut o) => {
+                                if *o.get() < hint.sequence {
+                                    o.insert(hint.sequence);
+                                }
+                            }
+                            HashMapEntry::Vacant(e) => {
+                                e.insert(hint.sequence);
+                            }
+                        }
+                    }
+                } else if index_entry.is_some() && index_entry.unwrap().sequence == hint.sequence {
+                    inserts.push(hint)
+                }
+            }
 
-                   {
-                       let mut inserts = Vec::new();
+            for hint in inserts {
+                // FIXME: turn into error
+                let log = &self.inner.read().unwrap().log;
+                let log_write = log_writer.write(&log.read_entry(file_id, hint.entry_pos)?)?;
 
-                       for hint in hints {
-                           let hint = hint?;
-                           let inner = self.inner.read().unwrap();
-                           let index_entry = inner.index.get(&*hint.key);
+                if let LogWrite::NewFile(file_id) = log_write {
+                    new_files.push(file_id);
+                }
+            }
 
-                           if hint.deleted {
-                               if index_entry.is_none() {
-                                   match deletes.entry(hint.key.to_vec()) {
-                                       HashMapEntry::Occupied(mut o) => {
-                                           if *o.get() < hint.sequence {
-                                               o.insert(hint.sequence);
-                                           }
-                                       }
-                                       HashMapEntry::Vacant(e) => {
-                                           e.insert(hint.sequence);
-                                       }
-                                   }
-                               }
-                           } else if index_entry.is_some() &&
-                                     index_entry.unwrap().sequence == hint.sequence {
-                               inserts.push(hint)
-                           }
-                       }
+            compacted_files.push(file_id);
+        }
 
-                       for hint in inserts {
-                           // FIXME: turn into error
-                           let log = &self.inner.read().unwrap().log;
-                           let log_write = log_writer
-                               .write(&log.read_entry(file_id, hint.entry_pos)?)?;
+        for (key, sequence) in deletes {
+            log_writer.write(&Entry::deleted(sequence, key))?;
+        }
 
-                           if let LogWrite::NewFile(file_id) = log_write {
-                               files.push(file_id);
-                           }
-                       }
-                   }
-
-                   for (key, sequence) in deletes {
-                       log_writer.write(&Entry::deleted(sequence, key))?;
-                   }
-
-                   info!("Compacted data file: {} into: {:?}", file_id, files);
-
-                   if files.is_empty() {
-                       None
-                   } else {
-                       // FIXME
-                       Some(files[0])
-                   }
-               }
-               _ => None,
-           })
+        Ok((compacted_files, new_files))
     }
 
-    pub fn compact_file(&self, file_id: u32) -> Result<()> {
-        // FIXME: deal with compaction into nothing (i.e. 100% garbage)
-        let new_file_id = self.compact_file_aux(file_id)?;
+    pub fn compact_files(&self, files: &[u32]) -> Result<()> {
+        info!("Compacting data files: {:?}", files);
 
-        if let Some(new_file_id) = new_file_id {
+        let (ref compacted_files, ref new_files) = self.compact_files_aux(files)?;
+
+        for &file_id in new_files {
             let hints = {
-                self.inner.read().unwrap().log.hints(new_file_id)?
+                self.inner.read().unwrap().log.hints(file_id)?
             };
 
             if let Some(hints) = hints {
                 for hint in hints {
                     let hint = hint?;
-                    self.inner.write().unwrap().index.update(hint, new_file_id);
+                    self.inner.write().unwrap().index.update(hint, file_id);
                 }
-
-                self.inner
-                    .write()
-                    .unwrap()
-                    .log
-                    .swap_file(file_id, new_file_id)?;
-
-                info!("Finished compacting data file: {} into: {}",
-                      file_id,
-                      new_file_id);
             };
         }
+
+        self.inner
+            .write()
+            .unwrap()
+            .log
+            .swap_files(compacted_files, new_files)?;
+
+        // FIXME: print files not compacted
+        info!("Finished compacting data files: {:?} into: {:?}",
+              compacted_files,
+              new_files);
+
+        // FIXME: remove compacted files from stats
 
         Ok(())
     }
 
     pub fn compact(&self) -> Result<()> {
-        let iter = {
+        let fragmentation = {
             self.inner.read().unwrap().index.stats.fragmentation()
         };
 
-        for &(file_id, fragmentation) in iter.iter().filter(|e| e.1 >= FRAGMENTATION_THRESHOLD) {
+        let files: Vec<u32> = fragmentation
+            .iter()
+            .filter(|e| e.1 >= FRAGMENTATION_THRESHOLD)
+            .map(|e| {
 
-            info!("File {} has fragmentation factor of {}%, adding for compaction",
-                  file_id,
-                  fragmentation * 100.0);
+                info!("File {} has fragmentation factor of {}%, adding for compaction",
+                      e.0,
+                      e.1 * 100.0);
 
-            self.compact_file(file_id)?;
-        }
+                e.0
+            })
+            .collect();
+
+        self.compact_files(&files)?;
 
         Ok(())
     }
