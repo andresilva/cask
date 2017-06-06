@@ -38,7 +38,7 @@ fn init_logger() {
 fn main() {
     init_logger();
 
-    let cask = Cask::open("test.db", false);
+    let cask = Cask::open("test.db", false).unwrap();
 
     let seed = [1, 2, 3, 4];
 
@@ -66,10 +66,10 @@ fn main() {
                 let r = rng.next_f64();
                 if r < WRITE_PROBABILITY {
                     let key = (id * i).to_string();
-                    cask.put(key, &vec);
+                    cask.put(key, &vec).unwrap();
                 } else {
                     let key = ((base_value + (id * i)) * r as usize).to_string();
-                    cask.get(key);
+                    cask.get(key).unwrap();
                 }
 
                 i += 1

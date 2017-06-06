@@ -10,7 +10,7 @@ use std::vec::Vec;
 
 use data::{Entry, Hint, SequenceNumber};
 use errors::Result;
-use log::{Log, LogWriter};
+use log::{Log, LogWrite};
 use stats::Stats;
 
 const COMPACTION_CHECK_FREQUENCY: u64 = 60;
@@ -217,14 +217,20 @@ impl Cask {
                               break;
                           }
 
-                          caskt.compact().unwrap();
+                          if let Err(err) = caskt.compact() {
+                              warn!("Error during compaction: {}", err);
+                          }
                       });
 
         Ok(cask)
     }
 
     fn compact_file_aux(&self, file_id: u32) -> Result<Option<u32>> {
-        if file_id == self.inner.read().unwrap().log.active_file_id {
+        let active_file_id = {
+            self.inner.read().unwrap().log.active_file_id
+        };
+
+        if active_file_id.is_some() && active_file_id.unwrap() == file_id {
             return Ok(None);
         }
 
@@ -234,22 +240,14 @@ impl Cask {
 
         Ok(match hints {
                Some(hints) => {
-                   let (size_threshold, file_id_seq) = {
+                   let mut log_writer = {
                        // FIXME: turn into error
-                       let log = &self.inner.read().unwrap().log;
-                       (log.size_threshold, log.file_id_seq.clone())
+                       self.inner.read().unwrap().log.writer()
                    };
 
-                   let new_file_id = file_id_seq.increment();
+                   info!("Compacting data file: {}", file_id);
 
-                   info!("Compacting data file: {} into: {}", file_id, new_file_id);
-
-                   // FIXME: create writer() method on Log
-                   let mut log_writer: LogWriter = LogWriter::new(&self.path,
-                                                                  new_file_id,
-                                                                  false,
-                                                                  size_threshold,
-                                                                  file_id_seq)?;
+                   let mut files = Vec::new();
                    let mut deletes = HashMap::new();
 
                    {
@@ -282,7 +280,12 @@ impl Cask {
                        for hint in inserts {
                            // FIXME: turn into error
                            let log = &self.inner.read().unwrap().log;
-                           log_writer.write(&log.read_entry(file_id, hint.entry_pos)?)?;
+                           let log_write = log_writer
+                               .write(&log.read_entry(file_id, hint.entry_pos)?)?;
+
+                           if let LogWrite::NewFile(file_id) = log_write {
+                               files.push(file_id);
+                           }
                        }
                    }
 
@@ -290,13 +293,21 @@ impl Cask {
                        log_writer.write(&Entry::deleted(sequence, key))?;
                    }
 
-                   Some(new_file_id)
+                   info!("Compacted data file: {} into: {:?}", file_id, files);
+
+                   if files.is_empty() {
+                       None
+                   } else {
+                       // FIXME
+                       Some(files[0])
+                   }
                }
                _ => None,
            })
     }
 
     pub fn compact_file(&self, file_id: u32) -> Result<()> {
+        // FIXME: deal with compaction into nothing (i.e. 100% garbage)
         let new_file_id = self.compact_file_aux(file_id)?;
 
         if let Some(new_file_id) = new_file_id {

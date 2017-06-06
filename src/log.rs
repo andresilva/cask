@@ -25,12 +25,12 @@ const DEFAULT_SIZE_THRESHOLD: usize = 2000 * 1024 * 1024;
 pub struct Log {
     pub path: PathBuf,
     sync: bool,
-    pub size_threshold: usize,
+    size_threshold: usize,
     lock_file: File,
     files: Vec<u32>,
-    pub file_id_seq: Arc<Sequence>,
-    pub active_file_id: u32,
-    active_log_writer: LogWriter,
+    file_id_seq: Arc<Sequence>,
+    log_writer: LogWriter,
+    pub active_file_id: Option<u32>,
 }
 
 impl Log {
@@ -48,24 +48,19 @@ impl Log {
 
         let files = find_data_files(&path)?;
 
-        let active_file_id = if files.is_empty() {
+        let current_file_id = if files.is_empty() {
             0
         } else {
-            files[files.len() - 1] + 1
+            files[files.len() - 1]
         };
 
         let size_threshold = DEFAULT_SIZE_THRESHOLD;
 
-        let file_id_seq = Arc::new(Sequence::new(active_file_id));
+        let file_id_seq = Arc::new(Sequence::new(current_file_id));
 
-        let active_log_writer = LogWriter::new(&path,
-                                               active_file_id,
-                                               sync,
-                                               size_threshold,
-                                               file_id_seq.clone())?;
+        info!("Current file id: {}", current_file_id);
 
-        info!("Created new active data file {:?}",
-              active_log_writer.data_file_path);
+        let log_writer = LogWriter::new(&path, sync, size_threshold, file_id_seq.clone());
 
         Ok(Log {
                path: path,
@@ -74,8 +69,8 @@ impl Log {
                lock_file: lock_file,
                files: files,
                file_id_seq: file_id_seq,
-               active_file_id: active_file_id,
-               active_log_writer: active_log_writer,
+               log_writer: log_writer,
+               active_file_id: None,
            })
     }
 
@@ -132,16 +127,25 @@ impl Log {
     }
 
     pub fn append_entry<'a>(&mut self, entry: &Entry<'a>) -> Result<(u32, u64)> {
-        if self.active_log_writer.data_file_pos + entry.size() > self.size_threshold as u64 {
-            info!("Active data file {:?} reached file limit",
-                  self.active_log_writer.data_file_path);
+        Ok(match self.log_writer.write(entry)? {
+               LogWrite::NewFile(file_id) => {
+                   if let Some(active_file_id) = self.active_file_id {
+                       self.add_file(active_file_id);
+                   }
+                   self.active_file_id = Some(file_id);
+                   info!("New active data file {:?}",
+                         self.log_writer.entry_writer()?.data_file_path);
+                   (file_id, 0)
+               }
+               LogWrite::Ok(entry_pos) => (self.active_file_id.unwrap(), entry_pos),
+           })
+    }
 
-            self.new_active_writer()?;
-        }
-
-        let entry_pos = self.active_log_writer.write(entry)?;
-
-        Ok((self.active_file_id, entry_pos))
+    pub fn writer(&self) -> LogWriter {
+        LogWriter::new(&self.path,
+                       self.sync,
+                       self.size_threshold,
+                       self.file_id_seq.clone())
     }
 
     pub fn swap_file(&mut self, file_id: u32, new_file_id: u32) -> Result<()> {
@@ -166,26 +170,6 @@ impl Log {
         self.files.push(file_id);
         self.files.sort();
     }
-
-    fn new_active_writer(&mut self) -> Result<()> {
-        let active_file_id = self.active_file_id;
-        self.add_file(active_file_id);
-
-        info!("Closed active data file {:?}",
-              self.active_log_writer.data_file_path);
-
-        self.active_file_id = self.file_id_seq.increment();
-        self.active_log_writer = LogWriter::new(&self.path,
-                                                self.active_file_id,
-                                                self.sync,
-                                                self.size_threshold,
-                                                self.file_id_seq.clone())?;
-
-        info!("Created new active data file {:?}",
-              self.active_log_writer.data_file_path);
-
-        Ok(())
-    }
 }
 
 impl Drop for Log {
@@ -195,34 +179,98 @@ impl Drop for Log {
 }
 
 pub struct LogWriter {
+    path: PathBuf,
     sync: bool,
     size_threshold: usize,
-    data_file_path: PathBuf,
-    data_file: File, // TODO: wrap in cell to initialize lazily
-    data_file_pos: u64,
     file_id_seq: Arc<Sequence>,
-    hint_writer: HintWriter,
+    entry_writer: Option<EntryWriter>,
+}
+
+pub enum LogWrite {
+    Ok(u64),
+    NewFile(u32),
 }
 
 impl LogWriter {
     pub fn new(path: &Path,
-               file_id: u32,
                sync: bool,
                size_threshold: usize,
                file_id_seq: Arc<Sequence>)
-               -> Result<LogWriter> {
+               -> LogWriter {
+
+        LogWriter {
+            path: path.to_path_buf(),
+            sync: sync,
+            size_threshold: size_threshold,
+            file_id_seq: file_id_seq,
+            entry_writer: None,
+        }
+    }
+
+    fn entry_writer(&mut self) -> Result<&EntryWriter> {
+        if self.entry_writer.is_none() {
+            self.new_entry_writer()?;
+        }
+        Ok(self.entry_writer.as_ref().unwrap())
+    }
+
+    fn new_entry_writer(&mut self) -> Result<u32> {
+        let file_id = self.file_id_seq.increment();
+
+        if self.entry_writer.is_some() {
+            info!("Closed data file {:?}",
+                  self.entry_writer.as_ref().unwrap().data_file_path);
+        }
+
+        self.entry_writer = Some(EntryWriter::new(&self.path, self.sync, file_id)?);
+        Ok(file_id)
+    }
+
+    pub fn write(&mut self, entry: &Entry) -> Result<LogWrite> {
+        Ok(if self.entry_writer.is_none() || // FIXME: clean up
+              self.entry_writer.as_ref().unwrap().data_file_pos + entry.size() >
+              self.size_threshold as u64 {
+
+               if self.entry_writer.is_some() {
+                   info!("Data file {:?} reached file limit",
+                         self.entry_writer.as_ref().unwrap().data_file_path);
+               }
+
+               let file_id = self.new_entry_writer()?;
+               let entry_pos = self.entry_writer.as_mut().unwrap().write(entry)?;
+
+               assert_eq!(entry_pos, 0);
+
+               LogWrite::NewFile(file_id)
+           } else {
+               let entry_pos = self.entry_writer.as_mut().unwrap().write(entry)?;
+               LogWrite::Ok(entry_pos)
+           })
+    }
+}
+
+pub struct EntryWriter {
+    sync: bool,
+    data_file_path: PathBuf,
+    data_file: File,
+    data_file_pos: u64,
+    hint_writer: HintWriter,
+}
+
+impl EntryWriter {
+    pub fn new(path: &Path, sync: bool, file_id: u32) -> Result<EntryWriter> {
         let data_file_path = get_data_file_path(path, file_id);
         let data_file = get_file_handle(&data_file_path, true)?;
 
+        info!("Created new data file {:?}", data_file_path);
+
         let hint_writer = HintWriter::new(path, file_id)?;
 
-        Ok(LogWriter {
+        Ok(EntryWriter {
                sync: sync,
-               size_threshold: size_threshold,
                data_file_path: data_file_path,
                data_file: data_file,
                data_file_pos: 0,
-               file_id_seq: file_id_seq,
                hint_writer: hint_writer,
            })
     }
@@ -245,7 +293,7 @@ impl LogWriter {
     }
 }
 
-impl Drop for LogWriter {
+impl Drop for EntryWriter {
     fn drop(&mut self) {
         if self.sync {
             let _ = self.data_file.sync_data();
