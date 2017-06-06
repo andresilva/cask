@@ -50,6 +50,12 @@ impl Stats {
         }
     }
 
+    pub fn remove_files(&mut self, files: &[u32]) {
+        for file_id in files {
+            self.map.remove(file_id);
+        }
+    }
+
     #[allow(dead_code)]
     pub fn dead_bytes(&self) -> Vec<(u32, u64)> {
         let mut vec: Vec<_> = self.map.iter().map(|e| (*e.0, e.1.dead_bytes)).collect();

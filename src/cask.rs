@@ -319,6 +319,8 @@ impl Cask {
             };
         }
 
+        self.inner.write().unwrap().index.stats.remove_files(compacted_files);
+
         self.inner
             .write()
             .unwrap()
@@ -329,8 +331,6 @@ impl Cask {
         info!("Finished compacting data files: {:?} into: {:?}",
               compacted_files,
               new_files);
-
-        // FIXME: remove compacted files from stats
 
         Ok(())
     }
