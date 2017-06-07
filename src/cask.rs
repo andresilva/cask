@@ -472,31 +472,26 @@ impl Cask {
                           fragmentation * 100.0);
                     triggered = true;
                     files.insert(file_id);
-                } else if dead_bytes >= self.options.dead_bytes_trigger {
-                    if !files.contains(&file_id) {
-                        info!("File {} has {} dead bytes, triggered compaction",
-                              file_id,
-                              dead_bytes);
-                        triggered = true;
-                        files.insert(file_id);
-                    }
+                } else if dead_bytes >= self.options.dead_bytes_trigger &&
+                          !files.contains(&file_id) {
+                    info!("File {} has {} dead bytes, triggered compaction",
+                          file_id,
+                          dead_bytes);
+                    triggered = true;
+                    files.insert(file_id);
                 }
             }
 
-            if fragmentation >= self.options.fragmentation_threshold {
-                if !files.contains(&file_id) {
-                    info!("File {} has fragmentation factor of {}%, adding for compaction",
-                          file_id,
-                          fragmentation * 100.0);
-                    files.insert(file_id);
-                }
-            } else if dead_bytes >= self.options.dead_bytes_threshold {
-                if !files.contains(&file_id) {
-                    info!("File {} has {} dead bytes, adding for compaction",
-                          file_id,
-                          dead_bytes);
-                    files.insert(file_id);
-                }
+            if fragmentation >= self.options.fragmentation_threshold && !files.contains(&file_id) {
+                info!("File {} has fragmentation factor of {}%, adding for compaction",
+                      file_id,
+                      fragmentation * 100.0);
+                files.insert(file_id);
+            } else if dead_bytes >= self.options.dead_bytes_threshold && !files.contains(&file_id) {
+                info!("File {} has {} dead bytes, adding for compaction",
+                      file_id,
+                      dead_bytes);
+                files.insert(file_id);
             }
 
             if !files.contains(&file_id) {
@@ -518,13 +513,11 @@ impl Cask {
         if triggered {
             let files: Vec<_> = files.into_iter().collect();
             self.compact_files(&files)?;
+        } else if !files.is_empty() {
+            info!("Compaction of files {:?} aborted due to missing trigger",
+                  &files);
         } else {
-            if files.is_empty() {
-                info!("No files eligible for compaction")
-            } else {
-                info!("Compaction of files {:?} aborted due to missing trigger",
-                      &files);
-            }
+            info!("No files eligible for compaction")
         }
 
         Ok(())
