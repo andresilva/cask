@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::collections::hash_map::Entry as HashMapEntry;
 use std::path::PathBuf;
 use std::result::Result::Ok;
@@ -14,7 +14,11 @@ use log::{Log, LogWrite};
 use stats::Stats;
 
 const COMPACTION_CHECK_FREQUENCY: u64 = 60;
-const FRAGMENTATION_THRESHOLD: f64 = 0.6;
+const FRAGMENTATION_TRIGGER: f64 = 0.6;
+const DEAD_BYTES_TRIGGER: u64 = 512 * 1024 * 1024;
+const FRAGMENTATION_THRESHOLD: f64 = 0.4;
+const DEAD_BYTES_THRESHOLD: u64 = 128 * 1024 * 1024;
+const SMALL_FILE_THRESHOLD: u64 = 10 * 1024 * 1024;
 
 #[derive(Debug)]
 pub struct IndexEntry {
@@ -319,7 +323,12 @@ impl Cask {
             };
         }
 
-        self.inner.write().unwrap().index.stats.remove_files(compacted_files);
+        self.inner
+            .write()
+            .unwrap()
+            .index
+            .stats
+            .remove_files(compacted_files);
 
         self.inner
             .write()
@@ -335,25 +344,85 @@ impl Cask {
         Ok(())
     }
 
+    // FIXME: add compaction lock
     pub fn compact(&self) -> Result<()> {
-        let fragmentation = {
-            self.inner.read().unwrap().index.stats.fragmentation()
+        let active_file_id = {
+            self.inner.read().unwrap().log.active_file_id
         };
 
-        let files: Vec<u32> = fragmentation
-            .iter()
-            .filter(|e| e.1 >= FRAGMENTATION_THRESHOLD)
-            .map(|e| {
+        let file_stats = {
+            self.inner.read().unwrap().index.stats.file_stats()
+        };
 
-                info!("File {} has fragmentation factor of {}%, adding for compaction",
-                      e.0,
-                      e.1 * 100.0);
+        let mut files = BTreeSet::new();
+        let mut triggered = false;
 
-                e.0
-            })
-            .collect();
+        for (file_id, fragmentation, dead_bytes) in file_stats {
+            if active_file_id.is_some() && file_id == active_file_id.unwrap() {
+                continue;
+            }
 
-        self.compact_files(&files)?;
+            if !triggered {
+                if fragmentation >= FRAGMENTATION_TRIGGER {
+                    info!("File {} has fragmentation factor of {}%, triggered compaction",
+                          file_id,
+                          fragmentation * 100.0);
+                    triggered = true;
+                    files.insert(file_id);
+                } else if dead_bytes >= DEAD_BYTES_TRIGGER {
+                    if !files.contains(&file_id) {
+                        info!("File {} has {} dead bytes, triggered compaction",
+                              file_id,
+                              dead_bytes);
+                        triggered = true;
+                        files.insert(file_id);
+                    }
+                }
+            }
+
+            if fragmentation >= FRAGMENTATION_THRESHOLD {
+                if !files.contains(&file_id) {
+                    info!("File {} has fragmentation factor of {}%, adding for compaction",
+                          file_id,
+                          fragmentation * 100.0);
+                    files.insert(file_id);
+                }
+            } else if dead_bytes >= DEAD_BYTES_THRESHOLD {
+                if !files.contains(&file_id) {
+                    info!("File {} has {} dead bytes, adding for compaction",
+                          file_id,
+                          dead_bytes);
+                    files.insert(file_id);
+                }
+            }
+
+            if !files.contains(&file_id) {
+                let file_size = {
+                    self.inner.read().unwrap().log.file_size(file_id).ok()
+                };
+
+                if let Some(file_size) = file_size {
+                    if file_size <= SMALL_FILE_THRESHOLD {
+                        info!("File {} has total size of {} bytes, adding for compaction",
+                              file_id,
+                              file_size);
+                        files.insert(file_id);
+                    }
+                };
+            }
+        }
+
+        if triggered {
+            let files: Vec<_> = files.into_iter().collect();
+            self.compact_files(&files)?;
+        } else {
+            if files.is_empty() {
+                info!("No files eligible for compaction")
+            } else {
+                info!("Compaction of files {:?} aborted due to missing trigger",
+                      &files);
+            }
+        }
 
         Ok(())
     }

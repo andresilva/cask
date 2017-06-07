@@ -7,7 +7,6 @@ use cask::IndexEntry;
 struct StatsEntry {
     entries: u64,
     dead_entries: u64,
-    total_bytes: u64,
     dead_bytes: u64,
 }
 
@@ -25,13 +24,11 @@ impl Stats {
         match self.map.entry(entry.file_id) {
             HashMapEntry::Occupied(mut o) => {
                 o.get_mut().entries += 1;
-                o.get_mut().total_bytes += entry.entry_size;
             }
             HashMapEntry::Vacant(e) => {
                 e.insert(StatsEntry {
                              entries: 1,
                              dead_entries: 0,
-                             total_bytes: entry.entry_size,
                              dead_bytes: 0,
                          });
             }
@@ -56,19 +53,10 @@ impl Stats {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn dead_bytes(&self) -> Vec<(u32, u64)> {
-        let mut vec: Vec<_> = self.map.iter().map(|e| (*e.0, e.1.dead_bytes)).collect();
-        vec.sort_by_key(|e| e.1);
-        vec
-    }
-
-    pub fn fragmentation(&self) -> Vec<(u32, f64)> {
-        let mut vec: Vec<_> = self.map
+    pub fn file_stats(&self) -> Vec<(u32, f64, u64)> {
+        self.map
             .iter()
-            .map(|e| (*e.0, e.1.dead_entries as f64 / e.1.entries as f64))
-            .collect();
-        vec.sort_by(|&a, b| a.0.partial_cmp(&b.0).unwrap());
-        vec
+            .map(|e| (*e.0, e.1.dead_entries as f64 / e.1.entries as f64, e.1.dead_bytes))
+            .collect()
     }
 }

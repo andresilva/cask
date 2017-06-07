@@ -20,7 +20,7 @@ const DATA_FILE_EXTENSION: &'static str = "cask.data";
 const HINT_FILE_EXTENSION: &'static str = "cask.hint";
 const LOCK_FILE_NAME: &'static str = "cask.lock";
 
-const DEFAULT_SIZE_THRESHOLD: usize = 2000 * 1024 * 1024;
+const DEFAULT_SIZE_THRESHOLD: usize = 2 * 1024 * 1024 * 1024;
 
 pub struct Log {
     pub path: PathBuf,
@@ -72,6 +72,11 @@ impl Log {
                log_writer: log_writer,
                active_file_id: None,
            })
+    }
+
+    pub fn file_size(&self, file_id: u32) -> Result<u64> {
+        let data_file = get_file_handle(&get_data_file_path(&self.path, file_id), false)?;
+        Ok(data_file.metadata()?.len())
     }
 
     pub fn files(&self) -> Vec<u32> {
