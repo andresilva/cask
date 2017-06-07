@@ -3,7 +3,7 @@ use std::collections::hash_map::Entry as HashMapEntry;
 use std::path::PathBuf;
 use std::result::Result::Ok;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
 use std::vec::Vec;
@@ -163,6 +163,7 @@ pub struct Cask {
     path: PathBuf,
     dropped: Arc<AtomicBool>,
     inner: Arc<RwLock<CaskInner>>,
+    compaction: Arc<Mutex<()>>,
 }
 
 impl Cask {
@@ -207,6 +208,7 @@ impl Cask {
                                             log: log,
                                             index: index,
                                         })),
+            compaction: Arc::new(Mutex::new(())),
         };
 
         let caskt = cask.clone();
@@ -305,7 +307,7 @@ impl Cask {
         Ok((compacted_files, new_files))
     }
 
-    pub fn compact_files(&self, files: &[u32]) -> Result<()> {
+    fn compact_files(&self, files: &[u32]) -> Result<()> {
         info!("Compacting data files: {:?}", files);
 
         let (ref compacted_files, ref new_files) = self.compact_files_aux(files)?;
@@ -344,8 +346,9 @@ impl Cask {
         Ok(())
     }
 
-    // FIXME: add compaction lock
     pub fn compact(&self) -> Result<()> {
+        let _ = self.compaction.lock().unwrap();
+
         let active_file_id = {
             self.inner.read().unwrap().log.active_file_id
         };
