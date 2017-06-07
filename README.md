@@ -20,7 +20,7 @@ of your dependencies:
 
 ```toml
 [dependencies]
-cask = "0.5.0"
+cask = "0.6.0"
 ```
 
 Then, use `Cask` in your crate:
@@ -35,7 +35,7 @@ use cask::Cask;
 The basic usage of the library is shown below:
 
 ```rust
-let cask = Cask::open("test.db", false)?;
+let cask = CaskOptions::default().sync(false).open("test.db")?;
 
 let key = "hello";
 let value = "world";
@@ -49,8 +49,9 @@ cask.delete(key)?;
 
 - [X] Basic error handling
 - [X] Merge files during compaction
-- [ ] Configurable compaction triggers and thresholds
-- [ ] Add tests
+- [X] Configurable compaction triggers and thresholds
+- [ ] Documentation
+- [ ] Tests
 - [ ] Benchmark
 - [ ] Handle database corruption
 
