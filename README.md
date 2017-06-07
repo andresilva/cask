@@ -27,7 +27,7 @@ Then, use `Cask` in your crate:
 
 ```rust
 extern crate cask;
-use cask::Cask;
+use cask::{Cask, CaskOptions};
 ```
 
 ## Usage
