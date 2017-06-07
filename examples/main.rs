@@ -41,6 +41,7 @@ fn main() {
     let cask = CaskOptions::default()
         .compaction_check_frequency(1)
         .max_file_size(50 * 1024 * 1024)
+        .sync(false)
         .open("test.db")
         .unwrap();
 

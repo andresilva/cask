@@ -62,3 +62,18 @@ impl Sequence {
         self.0.fetch_add(1, Ordering::SeqCst) as u32 + 1
     }
 }
+
+pub fn human_readable_byte_count(bytes: usize, si: bool) -> String {
+    let unit = if si { 1000 } else { 1024 };
+    if bytes < unit {
+        return format!("{} B", bytes);
+    }
+    let exp = ((bytes as f64).ln() / (unit as f64).ln()) as usize;
+
+    let units = if si { "kMGTPE" } else { "KMGTPE" };
+    let pre = format!("{}{}",
+                      units.chars().nth(exp - 1).unwrap(),
+                      if si { "" } else { "i" });
+
+    format!("{:.1} {}B", bytes / unit.pow(exp as u32), pre)
+}

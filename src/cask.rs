@@ -15,6 +15,7 @@ use data::{Entry, Hint, SequenceNumber};
 use errors::Result;
 use log::{Log, LogWrite};
 use stats::Stats;
+use util::human_readable_byte_count;
 
 #[derive(Debug)]
 pub struct IndexEntry {
@@ -467,30 +468,30 @@ impl Cask {
 
             if !triggered {
                 if fragmentation >= self.options.fragmentation_trigger {
-                    info!("File {} has fragmentation factor of {}%, triggered compaction",
+                    info!("File {} has fragmentation factor of {:.1}%, triggered compaction",
                           file_id,
                           fragmentation * 100.0);
                     triggered = true;
                     files.insert(file_id);
                 } else if dead_bytes >= self.options.dead_bytes_trigger &&
                           !files.contains(&file_id) {
-                    info!("File {} has {} dead bytes, triggered compaction",
+                    info!("File {} has {} of dead data, triggered compaction",
                           file_id,
-                          dead_bytes);
+                          human_readable_byte_count(dead_bytes as usize, true));
                     triggered = true;
                     files.insert(file_id);
                 }
             }
 
             if fragmentation >= self.options.fragmentation_threshold && !files.contains(&file_id) {
-                info!("File {} has fragmentation factor of {}%, adding for compaction",
+                info!("File {} has fragmentation factor of {:.1}%, adding for compaction",
                       file_id,
                       fragmentation * 100.0);
                 files.insert(file_id);
             } else if dead_bytes >= self.options.dead_bytes_threshold && !files.contains(&file_id) {
-                info!("File {} has {} dead bytes, adding for compaction",
+                info!("File {} has {} of dead data, adding for compaction",
                       file_id,
-                      dead_bytes);
+                      human_readable_byte_count(dead_bytes as usize, true));
                 files.insert(file_id);
             }
 
@@ -501,9 +502,9 @@ impl Cask {
 
                 if let Some(file_size) = file_size {
                     if file_size <= self.options.small_file_threshold {
-                        info!("File {} has total size of {} bytes, adding for compaction",
+                        info!("File {} has total size of {}, adding for compaction",
                               file_id,
-                              file_size);
+                              human_readable_byte_count(file_size as usize, true));
                         files.insert(file_id);
                     }
                 };

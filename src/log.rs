@@ -14,7 +14,7 @@ use regex::Regex;
 
 use data::{Entry, Hint};
 use errors::{Error, Result};
-use util::{Sequence, XxHash32, get_file_handle, xxhash32};
+use util::{Sequence, XxHash32, get_file_handle, human_readable_byte_count, xxhash32};
 
 const DATA_FILE_EXTENSION: &'static str = "cask.data";
 const HINT_FILE_EXTENSION: &'static str = "cask.hint";
@@ -236,8 +236,9 @@ impl LogWriter {
               self.max_file_size as u64 {
 
                if self.entry_writer.is_some() {
-                   info!("Data file {:?} reached file limit",
-                         self.entry_writer.as_ref().unwrap().data_file_path);
+                   info!("Data file {:?} reached file limit of {}",
+                         self.entry_writer.as_ref().unwrap().data_file_path,
+                         human_readable_byte_count(self.max_file_size, true));
                }
 
                let file_id = self.new_entry_writer()?;
