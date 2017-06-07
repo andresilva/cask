@@ -178,7 +178,7 @@ impl Default for CaskOptions {
         CaskOptions {
             sync: true,
             max_file_size: 2 * 1024 * 1024 * 1024,
-            compaction_check_frequency: 2,
+            compaction_check_frequency: 60,
             fragmentation_trigger: 0.6,
             dead_bytes_trigger: 512 * 1024 * 1024,
             fragmentation_threshold: 0.4,
@@ -190,44 +190,54 @@ impl Default for CaskOptions {
 
 #[allow(dead_code)]
 impl CaskOptions {
-    fn sync(&mut self, sync: bool) -> &mut CaskOptions {
+    pub fn new() -> CaskOptions {
+        CaskOptions::default()
+    }
+
+    pub fn sync(&mut self, sync: bool) -> &mut CaskOptions {
         self.sync = sync;
         self
     }
 
-    fn max_file_size(&mut self, max_file_size: usize) -> &mut CaskOptions {
+    pub fn max_file_size(&mut self, max_file_size: usize) -> &mut CaskOptions {
         self.max_file_size = max_file_size;
         self
     }
 
-    fn compaction_check_frequency(&mut self, compaction_check_frequency: u64) -> &mut CaskOptions {
+    pub fn compaction_check_frequency(&mut self,
+                                      compaction_check_frequency: u64)
+                                      -> &mut CaskOptions {
         self.compaction_check_frequency = compaction_check_frequency;
         self
     }
 
-    fn fragmentation_trigger(&mut self, fragmentation_trigger: f64) -> &mut CaskOptions {
+    pub fn fragmentation_trigger(&mut self, fragmentation_trigger: f64) -> &mut CaskOptions {
         self.fragmentation_trigger = fragmentation_trigger;
         self
     }
 
-    fn dead_bytes_trigger(&mut self, dead_bytes_trigger: u64) -> &mut CaskOptions {
+    pub fn dead_bytes_trigger(&mut self, dead_bytes_trigger: u64) -> &mut CaskOptions {
         self.dead_bytes_trigger = dead_bytes_trigger;
         self
     }
 
-    fn fragmentation_threshold(&mut self, fragmentation_threshold: f64) -> &mut CaskOptions {
+    pub fn fragmentation_threshold(&mut self, fragmentation_threshold: f64) -> &mut CaskOptions {
         self.fragmentation_threshold = fragmentation_threshold;
         self
     }
 
-    fn dead_bytes_threshold(&mut self, dead_bytes_threshold: u64) -> &mut CaskOptions {
+    pub fn dead_bytes_threshold(&mut self, dead_bytes_threshold: u64) -> &mut CaskOptions {
         self.dead_bytes_threshold = dead_bytes_threshold;
         self
     }
 
-    fn small_file_threshold(&mut self, small_file_threshold: u64) -> &mut CaskOptions {
+    pub fn small_file_threshold(&mut self, small_file_threshold: u64) -> &mut CaskOptions {
         self.small_file_threshold = small_file_threshold;
         self
+    }
+
+    pub fn open(self, path: &str) -> Result<Cask> {
+        Cask::open(path, self)
     }
 }
 

@@ -13,7 +13,7 @@ use env_logger::LogBuilder;
 use rand::{Rng, SeedableRng, XorShiftRng};
 use log::LogRecord;
 
-use cask::Cask;
+use cask::CaskOptions;
 
 fn init_logger() {
     let format = |record: &LogRecord| {
@@ -38,7 +38,7 @@ fn init_logger() {
 fn main() {
     init_logger();
 
-    let cask = Cask::open("test.db", false).unwrap();
+    let cask = CaskOptions::default().open("test.db").unwrap();
 
     let seed = [1, 2, 3, 4];
 
