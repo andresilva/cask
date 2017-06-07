@@ -168,6 +168,7 @@ pub struct Cask {
 pub struct CaskOptions {
     sync: bool,
     max_file_size: usize,
+    compaction: bool,
     compaction_check_frequency: u64,
     compaction_window: (usize, usize),
     fragmentation_trigger: f64,
@@ -182,6 +183,7 @@ impl Default for CaskOptions {
         CaskOptions {
             sync: true,
             max_file_size: 2 * 1024 * 1024 * 1024,
+            compaction: true,
             compaction_check_frequency: 3600,
             compaction_window: (0, 23),
             fragmentation_trigger: 0.6,
@@ -206,6 +208,11 @@ impl CaskOptions {
 
     pub fn max_file_size(&mut self, max_file_size: usize) -> &mut CaskOptions {
         self.max_file_size = max_file_size;
+        self
+    }
+
+    pub fn compaction(&mut self, compaction: bool) -> &mut CaskOptions {
+        self.compaction = compaction;
         self
     }
 
@@ -307,25 +314,27 @@ impl Cask {
 
                           thread::sleep(Duration::new(caskk.options.compaction_check_frequency, 0));
 
-                          info!("Compaction thread wake up");
+                          if caskk.options.compaction {
+                              info!("Compaction thread wake up");
 
-                          let current_hour = time::now().tm_hour as usize;
-                          let (window_start, window_end) = caskk.options.compaction_window;
+                              let current_hour = time::now().tm_hour as usize;
+                              let (window_start, window_end) = caskk.options.compaction_window;
 
-                          let in_window = if window_start <= window_end {
-                              current_hour >= window_start && current_hour <= window_end
-                          } else {
-                              current_hour >= window_end || current_hour <= window_end
-                          };
+                              let in_window = if window_start <= window_end {
+                                  current_hour >= window_start && current_hour <= window_end
+                              } else {
+                                  current_hour >= window_end || current_hour <= window_end
+                              };
 
-                          if !in_window {
-                              info!("Compaction outside defined window {:?}",
-                                    caskk.options.compaction_window);
-                              continue;
-                          }
+                              if !in_window {
+                                  info!("Compaction outside defined window {:?}",
+                                        caskk.options.compaction_window);
+                                  continue;
+                              }
 
-                          if let Err(err) = caskk.compact() {
-                              warn!("Error during compaction: {}", err);
+                              if let Err(err) = caskk.compact() {
+                                  warn!("Error during compaction: {}", err);
+                              }
                           }
                       });
 
