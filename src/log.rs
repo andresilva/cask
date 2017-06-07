@@ -20,12 +20,10 @@ const DATA_FILE_EXTENSION: &'static str = "cask.data";
 const HINT_FILE_EXTENSION: &'static str = "cask.hint";
 const LOCK_FILE_NAME: &'static str = "cask.lock";
 
-const DEFAULT_SIZE_THRESHOLD: usize = 2 * 1024 * 1024 * 1024;
-
 pub struct Log {
     pub path: PathBuf,
     sync: bool,
-    size_threshold: usize,
+    max_file_size: usize,
     lock_file: File,
     files: Vec<u32>,
     file_id_seq: Arc<Sequence>,
@@ -34,7 +32,7 @@ pub struct Log {
 }
 
 impl Log {
-    pub fn open(path: &str, sync: bool) -> Result<Log> {
+    pub fn open(path: &str, sync: bool, max_file_size: usize) -> Result<Log> {
         let path = PathBuf::from(path);
 
         if path.exists() {
@@ -54,18 +52,16 @@ impl Log {
             files[files.len() - 1]
         };
 
-        let size_threshold = DEFAULT_SIZE_THRESHOLD;
-
         let file_id_seq = Arc::new(Sequence::new(current_file_id));
 
         info!("Current file id: {}", current_file_id);
 
-        let log_writer = LogWriter::new(&path, sync, size_threshold, file_id_seq.clone());
+        let log_writer = LogWriter::new(&path, sync, max_file_size, file_id_seq.clone());
 
         Ok(Log {
                path: path,
                sync: sync,
-               size_threshold: size_threshold,
+               max_file_size: max_file_size,
                lock_file: lock_file,
                files: files,
                file_id_seq: file_id_seq,
@@ -149,7 +145,7 @@ impl Log {
     pub fn writer(&self) -> LogWriter {
         LogWriter::new(&self.path,
                        self.sync,
-                       self.size_threshold,
+                       self.max_file_size,
                        self.file_id_seq.clone())
     }
 
@@ -189,7 +185,7 @@ impl Drop for Log {
 pub struct LogWriter {
     path: PathBuf,
     sync: bool,
-    size_threshold: usize,
+    max_file_size: usize,
     file_id_seq: Arc<Sequence>,
     entry_writer: Option<EntryWriter>,
 }
@@ -202,14 +198,14 @@ pub enum LogWrite {
 impl LogWriter {
     pub fn new(path: &Path,
                sync: bool,
-               size_threshold: usize,
+               max_file_size: usize,
                file_id_seq: Arc<Sequence>)
                -> LogWriter {
 
         LogWriter {
             path: path.to_path_buf(),
             sync: sync,
-            size_threshold: size_threshold,
+            max_file_size: max_file_size,
             file_id_seq: file_id_seq,
             entry_writer: None,
         }
@@ -237,7 +233,7 @@ impl LogWriter {
     pub fn write(&mut self, entry: &Entry) -> Result<LogWrite> {
         Ok(if self.entry_writer.is_none() || // FIXME: clean up
               self.entry_writer.as_ref().unwrap().data_file_pos + entry.size() >
-              self.size_threshold as u64 {
+              self.max_file_size as u64 {
 
                if self.entry_writer.is_some() {
                    info!("Data file {:?} reached file limit",

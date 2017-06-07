@@ -1,5 +1,6 @@
 use std::collections::{BTreeSet, HashMap};
 use std::collections::hash_map::Entry as HashMapEntry;
+use std::default::Default;
 use std::path::PathBuf;
 use std::result::Result::Ok;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,13 +13,6 @@ use data::{Entry, Hint, SequenceNumber};
 use errors::Result;
 use log::{Log, LogWrite};
 use stats::Stats;
-
-const COMPACTION_CHECK_FREQUENCY: u64 = 60;
-const FRAGMENTATION_TRIGGER: f64 = 0.6;
-const DEAD_BYTES_TRIGGER: u64 = 512 * 1024 * 1024;
-const FRAGMENTATION_THRESHOLD: f64 = 0.4;
-const DEAD_BYTES_THRESHOLD: u64 = 128 * 1024 * 1024;
-const SMALL_FILE_THRESHOLD: u64 = 10 * 1024 * 1024;
 
 #[derive(Debug)]
 pub struct IndexEntry {
@@ -161,15 +155,86 @@ impl CaskInner {
 #[derive(Clone)]
 pub struct Cask {
     path: PathBuf,
+    options: CaskOptions,
     dropped: Arc<AtomicBool>,
     inner: Arc<RwLock<CaskInner>>,
     compaction: Arc<Mutex<()>>,
 }
 
+#[derive(Clone)]
+pub struct CaskOptions {
+    sync: bool,
+    max_file_size: usize,
+    compaction_check_frequency: u64,
+    fragmentation_trigger: f64,
+    dead_bytes_trigger: u64,
+    fragmentation_threshold: f64,
+    dead_bytes_threshold: u64,
+    small_file_threshold: u64,
+}
+
+impl Default for CaskOptions {
+    fn default() -> CaskOptions {
+        CaskOptions {
+            sync: true,
+            max_file_size: 2 * 1024 * 1024 * 1024,
+            compaction_check_frequency: 2,
+            fragmentation_trigger: 0.6,
+            dead_bytes_trigger: 512 * 1024 * 1024,
+            fragmentation_threshold: 0.4,
+            dead_bytes_threshold: 128 * 1024 * 1024,
+            small_file_threshold: 10 * 1024 * 1024,
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl CaskOptions {
+    fn sync(&mut self, sync: bool) -> &mut CaskOptions {
+        self.sync = sync;
+        self
+    }
+
+    fn max_file_size(&mut self, max_file_size: usize) -> &mut CaskOptions {
+        self.max_file_size = max_file_size;
+        self
+    }
+
+    fn compaction_check_frequency(&mut self, compaction_check_frequency: u64) -> &mut CaskOptions {
+        self.compaction_check_frequency = compaction_check_frequency;
+        self
+    }
+
+    fn fragmentation_trigger(&mut self, fragmentation_trigger: f64) -> &mut CaskOptions {
+        self.fragmentation_trigger = fragmentation_trigger;
+        self
+    }
+
+    fn dead_bytes_trigger(&mut self, dead_bytes_trigger: u64) -> &mut CaskOptions {
+        self.dead_bytes_trigger = dead_bytes_trigger;
+        self
+    }
+
+    fn fragmentation_threshold(&mut self, fragmentation_threshold: f64) -> &mut CaskOptions {
+        self.fragmentation_threshold = fragmentation_threshold;
+        self
+    }
+
+    fn dead_bytes_threshold(&mut self, dead_bytes_threshold: u64) -> &mut CaskOptions {
+        self.dead_bytes_threshold = dead_bytes_threshold;
+        self
+    }
+
+    fn small_file_threshold(&mut self, small_file_threshold: u64) -> &mut CaskOptions {
+        self.small_file_threshold = small_file_threshold;
+        self
+    }
+}
+
 impl Cask {
-    pub fn open(path: &str, sync: bool) -> Result<Cask> {
+    pub fn open(path: &str, options: CaskOptions) -> Result<Cask> {
         info!("Opening database: {:?}", &path);
-        let mut log = Log::open(path, sync)?;
+        let mut log = Log::open(path, options.sync, options.max_file_size)?;
         let mut index = Index::new();
 
         let mut sequence = 0;
@@ -202,6 +267,7 @@ impl Cask {
 
         let cask = Cask {
             path: log.path.clone(),
+            options: options,
             dropped: Arc::new(AtomicBool::new(false)),
             inner: Arc::new(RwLock::new(CaskInner {
                                             current_sequence: sequence + 1,
@@ -213,7 +279,7 @@ impl Cask {
 
         let caskt = cask.clone();
         thread::spawn(move || loop {
-                          thread::sleep(Duration::new(COMPACTION_CHECK_FREQUENCY, 0));
+                          thread::sleep(Duration::new(caskt.options.compaction_check_frequency, 0));
 
                           info!("Compaction thread wake up");
 
@@ -366,13 +432,13 @@ impl Cask {
             }
 
             if !triggered {
-                if fragmentation >= FRAGMENTATION_TRIGGER {
+                if fragmentation >= self.options.fragmentation_trigger {
                     info!("File {} has fragmentation factor of {}%, triggered compaction",
                           file_id,
                           fragmentation * 100.0);
                     triggered = true;
                     files.insert(file_id);
-                } else if dead_bytes >= DEAD_BYTES_TRIGGER {
+                } else if dead_bytes >= self.options.dead_bytes_trigger {
                     if !files.contains(&file_id) {
                         info!("File {} has {} dead bytes, triggered compaction",
                               file_id,
@@ -383,14 +449,14 @@ impl Cask {
                 }
             }
 
-            if fragmentation >= FRAGMENTATION_THRESHOLD {
+            if fragmentation >= self.options.fragmentation_threshold {
                 if !files.contains(&file_id) {
                     info!("File {} has fragmentation factor of {}%, adding for compaction",
                           file_id,
                           fragmentation * 100.0);
                     files.insert(file_id);
                 }
-            } else if dead_bytes >= DEAD_BYTES_THRESHOLD {
+            } else if dead_bytes >= self.options.dead_bytes_threshold {
                 if !files.contains(&file_id) {
                     info!("File {} has {} dead bytes, adding for compaction",
                           file_id,
@@ -405,7 +471,7 @@ impl Cask {
                 };
 
                 if let Some(file_size) = file_size {
-                    if file_size <= SMALL_FILE_THRESHOLD {
+                    if file_size <= self.options.small_file_threshold {
                         info!("File {} has total size of {} bytes, adding for compaction",
                               file_id,
                               file_size);
