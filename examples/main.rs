@@ -38,7 +38,11 @@ fn init_logger() {
 fn main() {
     init_logger();
 
-    let cask = CaskOptions::default().open("test.db").unwrap();
+    let cask = CaskOptions::default()
+        .compaction_check_frequency(1)
+        .max_file_size(50 * 1024 * 1024)
+        .open("test.db")
+        .unwrap();
 
     let seed = [1, 2, 3, 4];
 

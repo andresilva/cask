@@ -9,6 +9,8 @@ use std::thread;
 use std::time::Duration;
 use std::vec::Vec;
 
+use time;
+
 use data::{Entry, Hint, SequenceNumber};
 use errors::Result;
 use log::{Log, LogWrite};
@@ -166,6 +168,7 @@ pub struct CaskOptions {
     sync: bool,
     max_file_size: usize,
     compaction_check_frequency: u64,
+    compaction_window: (usize, usize),
     fragmentation_trigger: f64,
     dead_bytes_trigger: u64,
     fragmentation_threshold: f64,
@@ -178,7 +181,8 @@ impl Default for CaskOptions {
         CaskOptions {
             sync: true,
             max_file_size: 2 * 1024 * 1024 * 1024,
-            compaction_check_frequency: 60,
+            compaction_check_frequency: 3600,
+            compaction_window: (0, 23),
             fragmentation_trigger: 0.6,
             dead_bytes_trigger: 512 * 1024 * 1024,
             fragmentation_threshold: 0.4,
@@ -211,6 +215,11 @@ impl CaskOptions {
         self
     }
 
+    pub fn compaction_window(&mut self, start: usize, end: usize) -> &mut CaskOptions {
+        self.compaction_window = (start, end);
+        self
+    }
+
     pub fn fragmentation_trigger(&mut self, fragmentation_trigger: f64) -> &mut CaskOptions {
         self.fragmentation_trigger = fragmentation_trigger;
         self
@@ -236,8 +245,8 @@ impl CaskOptions {
         self
     }
 
-    pub fn open(self, path: &str) -> Result<Cask> {
-        Cask::open(path, self)
+    pub fn open(&self, path: &str) -> Result<Cask> {
+        Cask::open(path, self.clone())
     }
 }
 
@@ -287,19 +296,34 @@ impl Cask {
             compaction: Arc::new(Mutex::new(())),
         };
 
-        let caskt = cask.clone();
+        let caskk = cask.clone();
         thread::spawn(move || loop {
-                          thread::sleep(Duration::new(caskt.options.compaction_check_frequency, 0));
-
-                          info!("Compaction thread wake up");
-
-                          if caskt.dropped.load(Ordering::SeqCst) {
+                          if caskk.dropped.load(Ordering::SeqCst) {
                               info!("Cask has been dropped, background compaction \
                                      thread is exiting");
                               break;
                           }
 
-                          if let Err(err) = caskt.compact() {
+                          thread::sleep(Duration::new(caskk.options.compaction_check_frequency, 0));
+
+                          info!("Compaction thread wake up");
+
+                          let current_hour = time::now().tm_hour as usize;
+                          let (window_start, window_end) = caskk.options.compaction_window;
+
+                          let in_window = if window_start <= window_end {
+                              current_hour >= window_start && current_hour <= window_end
+                          } else {
+                              current_hour >= window_end || current_hour <= window_end
+                          };
+
+                          if !in_window {
+                              info!("Compaction outside defined window {:?}",
+                                    caskk.options.compaction_window);
+                              continue;
+                          }
+
+                          if let Err(err) = caskk.compact() {
                               warn!("Error during compaction: {}", err);
                           }
                       });
