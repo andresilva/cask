@@ -448,7 +448,8 @@ impl Cask {
     }
 
     pub fn compact(&self) -> Result<()> {
-        let _ = self.compaction.lock().unwrap();
+        #[allow(unused_variables)]
+        let lock = self.compaction.lock().unwrap();
 
         let active_file_id = {
             self.inner.read().unwrap().log.active_file_id
@@ -540,5 +541,7 @@ impl Cask {
 impl Drop for Cask {
     fn drop(&mut self) {
         self.dropped.store(true, Ordering::SeqCst);
+        #[allow(unused_variables)]
+        let lock = self.compaction.lock().unwrap();
     }
 }
