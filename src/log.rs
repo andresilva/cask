@@ -5,7 +5,7 @@ use std::io::{Cursor, SeekFrom, Take};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::result::Result::Ok;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::vec::Vec;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -14,6 +14,7 @@ use regex::Regex;
 
 use data::{Entry, Hint};
 use errors::{Error, Result};
+use file_pool::FilePool;
 use util::{Sequence, XxHash32, get_file_handle, human_readable_byte_count, xxhash32};
 
 const DATA_FILE_EXTENSION: &'static str = "cask.data";
@@ -26,12 +27,17 @@ pub struct Log {
     lock_file: File,
     files: Vec<u32>,
     file_id_seq: Arc<Sequence>,
+    file_pool: Mutex<FilePool>,
     log_writer: LogWriter,
     pub active_file_id: Option<u32>,
 }
 
 impl Log {
-    pub fn open(path: &str, sync: bool, max_file_size: usize) -> Result<Log> {
+    pub fn open(path: &str,
+                sync: bool,
+                max_file_size: usize,
+                file_pool_size: usize)
+                -> Result<Log> {
         let path = PathBuf::from(path);
 
         if path.exists() {
@@ -63,14 +69,28 @@ impl Log {
                lock_file: lock_file,
                files: files,
                file_id_seq: file_id_seq,
+               file_pool: Mutex::new(FilePool::new(file_pool_size)),
                log_writer: log_writer,
                active_file_id: None,
            })
     }
 
     pub fn file_size(&self, file_id: u32) -> Result<u64> {
-        let data_file = get_file_handle(&get_data_file_path(&self.path, file_id), false)?;
-        Ok(data_file.metadata()?.len())
+        let data_file =
+            self.file_pool
+                .lock()
+                .unwrap()
+                .get(file_id)
+                .map(Ok)
+                .unwrap_or_else(|| {
+                    get_file_handle(&get_data_file_path(&self.path, file_id), false)
+                })?;
+
+        let res = Ok(data_file.metadata()?.len());
+
+        self.file_pool.lock().unwrap().put(file_id, data_file);
+
+        res
     }
 
     pub fn files(&self) -> Vec<u32> {
@@ -120,9 +140,22 @@ impl Log {
     }
 
     pub fn read_entry<'a>(&self, file_id: u32, entry_pos: u64) -> Result<Entry<'a>> {
-        let mut data_file = get_file_handle(&get_data_file_path(&self.path, file_id), false)?;
+        let mut data_file =
+            self.file_pool
+                .lock()
+                .unwrap()
+                .get(file_id)
+                .map(Ok)
+                .unwrap_or_else(|| {
+                    get_file_handle(&get_data_file_path(&self.path, file_id), false)
+                })?;
+
         data_file.seek(SeekFrom::Start(entry_pos))?;
-        Entry::from_read(&mut data_file)
+        let res = Entry::from_read(&mut data_file);
+
+        self.file_pool.lock().unwrap().put(file_id, data_file);
+
+        res
     }
 
     pub fn append_entry<'a>(&mut self, entry: &Entry<'a>) -> Result<(u32, u64)> {

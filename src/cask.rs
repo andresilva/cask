@@ -168,6 +168,7 @@ pub struct Cask {
 pub struct CaskOptions {
     sync: SyncStrategy,
     max_file_size: usize,
+    file_pool_size: usize,
     compaction: bool,
     compaction_check_frequency: u64,
     compaction_window: (usize, usize),
@@ -190,6 +191,7 @@ impl Default for CaskOptions {
         CaskOptions {
             sync: SyncStrategy::Interval(1000),
             max_file_size: 2 * 1024 * 1024 * 1024,
+            file_pool_size: 2048,
             compaction: true,
             compaction_check_frequency: 3600,
             compaction_window: (0, 23),
@@ -215,6 +217,11 @@ impl CaskOptions {
 
     pub fn max_file_size(&mut self, max_file_size: usize) -> &mut CaskOptions {
         self.max_file_size = max_file_size;
+        self
+    }
+
+    pub fn file_pool_size(&mut self, file_pool_size: usize) -> &mut CaskOptions {
+        self.file_pool_size = file_pool_size;
         self
     }
 
@@ -270,7 +277,8 @@ impl Cask {
         info!("Opening database: {:?}", &path);
         let mut log = Log::open(path,
                                 options.sync == SyncStrategy::Always,
-                                options.max_file_size)?;
+                                options.max_file_size,
+                                options.file_pool_size)?;
         let mut index = Index::new();
 
         let mut sequence = 0;
@@ -337,7 +345,7 @@ impl Cask {
             let cask = cask.clone();
 
             thread::spawn(move || {
-                let duration = Duration::from_millis(cask.options.compaction_check_frequency);
+                let duration = Duration::from_secs(cask.options.compaction_check_frequency);
                 loop {
                     if cask.dropped.load(Ordering::SeqCst) {
                         info!("Cask has been dropped, background compaction \
