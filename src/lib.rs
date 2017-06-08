@@ -18,4 +18,4 @@ mod log;
 mod stats;
 mod util;
 
-pub use cask::{Cask, CaskOptions};
+pub use cask::{Cask, CaskOptions, SyncStrategy};

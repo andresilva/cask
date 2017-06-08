@@ -22,7 +22,6 @@ const LOCK_FILE_NAME: &'static str = "cask.lock";
 
 pub struct Log {
     pub path: PathBuf,
-    sync: bool,
     max_file_size: usize,
     lock_file: File,
     files: Vec<u32>,
@@ -60,7 +59,6 @@ impl Log {
 
         Ok(Log {
                path: path,
-               sync: sync,
                max_file_size: max_file_size,
                lock_file: lock_file,
                files: files,
@@ -144,9 +142,13 @@ impl Log {
 
     pub fn writer(&self) -> LogWriter {
         LogWriter::new(&self.path,
-                       self.sync,
+                       false, // FIXME: should this be configurable?
                        self.max_file_size,
                        self.file_id_seq.clone())
+    }
+
+    pub fn sync(&self) -> Result<()> {
+        self.log_writer.sync()
     }
 
     pub fn swap_files(&mut self, old_files: &[u32], new_files: &[u32]) -> Result<()> {
@@ -252,6 +254,14 @@ impl LogWriter {
                LogWrite::Ok(entry_pos)
            })
     }
+
+    pub fn sync(&self) -> Result<()> {
+        if let Some(ref writer) = self.entry_writer {
+            writer.data_file.sync_data()?
+        }
+
+        Ok(())
+    }
 }
 
 pub struct EntryWriter {
@@ -300,9 +310,7 @@ impl EntryWriter {
 
 impl Drop for EntryWriter {
     fn drop(&mut self) {
-        if self.sync {
-            let _ = self.data_file.sync_data();
-        }
+        let _ = self.data_file.sync_data();
     }
 }
 

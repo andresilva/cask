@@ -6,7 +6,7 @@ use std::result::Result::Ok;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::vec::Vec;
 
 use time;
@@ -166,7 +166,7 @@ pub struct Cask {
 
 #[derive(Clone)]
 pub struct CaskOptions {
-    sync: bool,
+    sync: SyncStrategy,
     max_file_size: usize,
     compaction: bool,
     compaction_check_frequency: u64,
@@ -178,10 +178,17 @@ pub struct CaskOptions {
     small_file_threshold: u64,
 }
 
+#[derive(Clone, PartialEq)]
+pub enum SyncStrategy {
+    None,
+    Always,
+    Interval(usize),
+}
+
 impl Default for CaskOptions {
     fn default() -> CaskOptions {
         CaskOptions {
-            sync: true,
+            sync: SyncStrategy::Interval(1000),
             max_file_size: 2 * 1024 * 1024 * 1024,
             compaction: true,
             compaction_check_frequency: 3600,
@@ -201,7 +208,7 @@ impl CaskOptions {
         CaskOptions::default()
     }
 
-    pub fn sync(&mut self, sync: bool) -> &mut CaskOptions {
+    pub fn sync(&mut self, sync: SyncStrategy) -> &mut CaskOptions {
         self.sync = sync;
         self
     }
@@ -261,7 +268,9 @@ impl CaskOptions {
 impl Cask {
     pub fn open(path: &str, options: CaskOptions) -> Result<Cask> {
         info!("Opening database: {:?}", &path);
-        let mut log = Log::open(path, options.sync, options.max_file_size)?;
+        let mut log = Log::open(path,
+                                options.sync == SyncStrategy::Always,
+                                options.max_file_size)?;
         let mut index = Index::new();
 
         let mut sequence = 0;
@@ -305,38 +314,58 @@ impl Cask {
         };
 
         let caskk = cask.clone();
-        thread::spawn(move || loop {
-                          if caskk.dropped.load(Ordering::SeqCst) {
-                              info!("Cask has been dropped, background compaction \
-                                     thread is exiting");
-                              break;
-                          }
 
-                          thread::sleep(Duration::new(caskk.options.compaction_check_frequency, 0));
+        thread::spawn(move || {
 
-                          if caskk.options.compaction {
-                              info!("Compaction thread wake up");
+            let mut instant = Instant::now();
 
-                              let current_hour = time::now().tm_hour as usize;
-                              let (window_start, window_end) = caskk.options.compaction_window;
+            let sleep_time = if let SyncStrategy::Interval(millis) = caskk.options.sync {
+                Duration::from_millis(millis as u64)
+            } else {
+                Duration::from_millis(1000)
+            };
 
-                              let in_window = if window_start <= window_end {
-                                  current_hour >= window_start && current_hour <= window_end
-                              } else {
-                                  current_hour >= window_end || current_hour <= window_end
-                              };
+            loop {
+                if caskk.dropped.load(Ordering::SeqCst) {
+                    info!("Cask has been dropped, background compaction \
+                           thread is exiting");
+                    break;
+                }
 
-                              if !in_window {
-                                  info!("Compaction outside defined window {:?}",
-                                        caskk.options.compaction_window);
-                                  continue;
-                              }
+                if let SyncStrategy::Interval(_) = caskk.options.sync {
+                    caskk.inner.read().unwrap().log.sync().unwrap();
+                }
 
-                              if let Err(err) = caskk.compact() {
-                                  warn!("Error during compaction: {}", err);
-                              }
-                          }
-                      });
+                // FIXME: dispatch compaction to another thread
+                if caskk.options.compaction &&
+                   instant.elapsed().as_secs() >= caskk.options.compaction_check_frequency {
+                    info!("Compaction thread wake up");
+
+                    let current_hour = time::now().tm_hour as usize;
+                    let (window_start, window_end) = caskk.options.compaction_window;
+
+                    let in_window = if window_start <= window_end {
+                        current_hour >= window_start && current_hour <= window_end
+                    } else {
+                        current_hour >= window_end || current_hour <= window_end
+                    };
+
+                    if !in_window {
+                        info!("Compaction outside defined window {:?}",
+                              caskk.options.compaction_window);
+                        continue;
+                    }
+
+                    if let Err(err) = caskk.compact() {
+                        warn!("Error during compaction: {}", err);
+                    }
+
+                    instant = Instant::now();
+                }
+
+                thread::sleep(sleep_time);
+            }
+        });
 
         Ok(cask)
     }
