@@ -18,7 +18,6 @@ fn get_latency(b: &mut Bencher) {
     let cask = CaskOptions::default()
         .compaction_check_frequency(1)
         .max_file_size(50 * 1024 * 1024)
-        .sync(false)
         .open(&path)
         .unwrap();
 
@@ -41,7 +40,6 @@ fn put_latency(b: &mut Bencher) {
     let cask = CaskOptions::default()
         .compaction_check_frequency(1)
         .max_file_size(50 * 1024 * 1024)
-        .sync(false)
         .open(&path)
         .unwrap();
 
