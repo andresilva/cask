@@ -6,7 +6,7 @@ use std::result::Result::Ok;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::vec::Vec;
 
 use time;
@@ -313,36 +313,42 @@ impl Cask {
             compaction: Arc::new(Mutex::new(())),
         };
 
-        let caskk = cask.clone();
+        if let SyncStrategy::Interval(millis) = cask.options.sync {
+            let cask = cask.clone();
 
-        thread::spawn(move || {
+            thread::spawn(move || {
+                let duration = Duration::from_millis(millis as u64);
+                loop {
+                    if cask.dropped.load(Ordering::SeqCst) {
+                        info!("Cask has been dropped, background file sync \
+                               thread is exiting");
+                        break;
+                    }
 
-            let mut instant = Instant::now();
+                    debug!("Background file sync");
+                    cask.inner.read().unwrap().log.sync().unwrap();
 
-            let sleep_time = if let SyncStrategy::Interval(millis) = caskk.options.sync {
-                Duration::from_millis(millis as u64)
-            } else {
-                Duration::from_millis(1000)
-            };
-
-            loop {
-                if caskk.dropped.load(Ordering::SeqCst) {
-                    info!("Cask has been dropped, background compaction \
-                           thread is exiting");
-                    break;
+                    thread::sleep(duration);
                 }
+            });
+        };
 
-                if let SyncStrategy::Interval(_) = caskk.options.sync {
-                    caskk.inner.read().unwrap().log.sync().unwrap();
-                }
+        if cask.options.compaction {
+            let cask = cask.clone();
 
-                // FIXME: dispatch compaction to another thread
-                if caskk.options.compaction &&
-                   instant.elapsed().as_secs() >= caskk.options.compaction_check_frequency {
+            thread::spawn(move || {
+                let duration = Duration::from_millis(cask.options.compaction_check_frequency);
+                loop {
+                    if cask.dropped.load(Ordering::SeqCst) {
+                        info!("Cask has been dropped, background compaction \
+                               thread is exiting");
+                        break;
+                    }
+
                     info!("Compaction thread wake up");
 
                     let current_hour = time::now().tm_hour as usize;
-                    let (window_start, window_end) = caskk.options.compaction_window;
+                    let (window_start, window_end) = cask.options.compaction_window;
 
                     let in_window = if window_start <= window_end {
                         current_hour >= window_start && current_hour <= window_end
@@ -352,20 +358,16 @@ impl Cask {
 
                     if !in_window {
                         info!("Compaction outside defined window {:?}",
-                              caskk.options.compaction_window);
+                              cask.options.compaction_window);
                         continue;
-                    }
-
-                    if let Err(err) = caskk.compact() {
+                    } else if let Err(err) = cask.compact() {
                         warn!("Error during compaction: {}", err);
                     }
 
-                    instant = Instant::now();
+                    thread::sleep(duration);
                 }
-
-                thread::sleep(sleep_time);
-            }
-        });
+            });
+        }
 
         Ok(cask)
     }
