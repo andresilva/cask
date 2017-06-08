@@ -181,7 +181,7 @@ pub struct CaskOptions {
 
 #[derive(Clone, PartialEq)]
 pub enum SyncStrategy {
-    None,
+    Never,
     Always,
     Interval(usize),
 }
