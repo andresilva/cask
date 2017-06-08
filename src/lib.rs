@@ -14,6 +14,7 @@ extern crate xxhash2;
 mod cask;
 mod data;
 pub mod errors;
+mod file_pool;
 mod log;
 mod stats;
 mod util;
