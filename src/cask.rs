@@ -164,6 +164,19 @@ pub struct Cask {
     compaction: Arc<Mutex<()>>,
 }
 
+/// `Cask` configuration. Provides control over the properties and behavior of the `Cask` instance.
+///
+/// # Examples
+///
+/// ```
+/// use cask::{CaskOptions, SyncStrategy};
+///
+/// let cask = CaskOptions::default()
+///     .compaction_check_frequency(1200)
+///     .sync(SyncStrategy::Never)
+///     .max_file_size(1024 * 1024 * 1024)
+///     .open("cask.db")?;
+/// ```
 #[derive(Clone)]
 pub struct CaskOptions {
     create: bool,
@@ -180,10 +193,14 @@ pub struct CaskOptions {
     small_file_threshold: u64,
 }
 
+/// Strategy used to synchronize writes to disk.
 #[derive(Clone, PartialEq)]
 pub enum SyncStrategy {
+    /// Never explicitly synchronize writes (the OS manages it).
     Never,
+    /// Always synchronize writes.
     Always,
+    /// Synchronize writes in the background every `n` milliseconds.
     Interval(usize),
 }
 
@@ -208,35 +225,44 @@ impl Default for CaskOptions {
 
 #[allow(dead_code)]
 impl CaskOptions {
+    /// Generates the base configuration for opening a `Cask`, from which configuration methods can
+    /// be chained.
     pub fn new() -> CaskOptions {
         CaskOptions::default()
     }
 
+    /// Sets the strategy used to synchronize writes to disk. Defaults to
+    /// `SyncStrategy::Interval(1000)`.
     pub fn sync(&mut self, sync: SyncStrategy) -> &mut CaskOptions {
         self.sync = sync;
         self
     }
 
+    /// Sets the maximum file size. Defaults to `2GB`.
     pub fn max_file_size(&mut self, max_file_size: usize) -> &mut CaskOptions {
         self.max_file_size = max_file_size;
         self
     }
 
+    /// Sets the maximum size of the file descriptor cache. Defaults to `2048`.
     pub fn file_pool_size(&mut self, file_pool_size: usize) -> &mut CaskOptions {
         self.file_pool_size = file_pool_size;
         self
     }
 
+    /// Enable or disable background compaction. Defaults to `true`.
     pub fn compaction(&mut self, compaction: bool) -> &mut CaskOptions {
         self.compaction = compaction;
         self
     }
 
+    /// Create `Cask` if it doesn't exist. Defaults to `true`.
     pub fn create(&mut self, create: bool) -> &mut CaskOptions {
         self.create = create;
         self
     }
 
+    /// Sets the frequency of compaction, in seconds. Defaults to `3600`.
     pub fn compaction_check_frequency(&mut self,
                                       compaction_check_frequency: u64)
                                       -> &mut CaskOptions {
@@ -244,36 +270,47 @@ impl CaskOptions {
         self
     }
 
+    /// Sets the time window during which compaction can run. Defaults to `[0, 23]`.
     pub fn compaction_window(&mut self, start: usize, end: usize) -> &mut CaskOptions {
         self.compaction_window = (start, end);
         self
     }
 
+    /// Sets the ratio of dead entries to total entries in a file that will trigger compaction.
+    /// Defaults to `0.6`.
     pub fn fragmentation_trigger(&mut self, fragmentation_trigger: f64) -> &mut CaskOptions {
         self.fragmentation_trigger = fragmentation_trigger;
         self
     }
 
+    /// Sets the minimum amount of data occupied by dead entries in a single file that will trigger
+    /// compaction. Defaults to `512MB`.
     pub fn dead_bytes_trigger(&mut self, dead_bytes_trigger: u64) -> &mut CaskOptions {
         self.dead_bytes_trigger = dead_bytes_trigger;
         self
     }
 
+    /// Sets the ratio of dead entries to total entries in a file that will cause it to be included
+    /// in a compaction. Defaults to `0.4`.
     pub fn fragmentation_threshold(&mut self, fragmentation_threshold: f64) -> &mut CaskOptions {
         self.fragmentation_threshold = fragmentation_threshold;
         self
     }
 
+    /// Sets the minimum amount of data occupied by dead entries in a single file that will cause it
+    /// to be included in a compaction. Defaults to `128MB`.
     pub fn dead_bytes_threshold(&mut self, dead_bytes_threshold: u64) -> &mut CaskOptions {
         self.dead_bytes_threshold = dead_bytes_threshold;
         self
     }
 
+    /// Sets the minimum size a file must have to be excluded from compaction. Defaults to `10MB`.
     pub fn small_file_threshold(&mut self, small_file_threshold: u64) -> &mut CaskOptions {
         self.small_file_threshold = small_file_threshold;
         self
     }
 
+    /// Opens/creates a `Cask` at `path`.
     pub fn open(&self, path: &str) -> Result<Cask> {
         Cask::open(path, self.clone())
     }
