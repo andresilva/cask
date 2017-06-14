@@ -7,16 +7,24 @@ use std::result;
 
 use data::{MAX_KEY_SIZE, MAX_VALUE_SIZE};
 
+/// Basic type to represent all possible errors that can occur when interacting with a `Cask`.
 #[derive(Debug)]
 pub enum Error {
+    /// IO error.
     Io(io::Error),
+    /// Tried to perform an operation on an invalid `file_id`.
     InvalidFileId(u32),
+    /// Invalid key size, i.e. larger than the maximum key size.
     InvalidKeySize(usize),
+    /// Invalid value size, i.e. larger than the maximum value size.
     InvalidValueSize(usize),
+    /// Invalid checksum found, potential data corruption.
     InvalidChecksum { expected: u32, found: u32 },
+    /// Invalid path provided.
     InvalidPath(String),
 }
 
+/// Value returned from potentially-error operations.
 pub type Result<T> = result::Result<T, Error>;
 
 impl Display for Error {
