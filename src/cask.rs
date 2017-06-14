@@ -168,14 +168,15 @@ pub struct Cask {
 ///
 /// # Examples
 ///
-/// ```
+/// ```rust,no_run
 /// use cask::{CaskOptions, SyncStrategy};
 ///
 /// let cask = CaskOptions::default()
 ///     .compaction_check_frequency(1200)
 ///     .sync(SyncStrategy::Never)
 ///     .max_file_size(1024 * 1024 * 1024)
-///     .open("cask.db")?;
+///     .open("cask.db")
+///     .unwrap();
 /// ```
 #[derive(Clone)]
 pub struct CaskOptions {
