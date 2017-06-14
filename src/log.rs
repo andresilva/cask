@@ -42,12 +42,10 @@ impl Log {
         let path_str = path;
         let path = PathBuf::from(path);
 
-        if path.exists() && !path.is_dir() {
+        if !path.exists() && !create || path.exists() && !path.is_dir() {
             return Err(Error::InvalidPath(path_str.to_string()));
-        } else if create {
-            fs::create_dir(&path)?;
         } else {
-            return Err(Error::InvalidPath(path_str.to_string()));
+            fs::create_dir(&path)?;
         }
 
         let lock_file = File::create(path.join(LOCK_FILE_NAME))?;
