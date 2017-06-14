@@ -34,16 +34,20 @@ pub struct Log {
 
 impl Log {
     pub fn open(path: &str,
+                create: bool,
                 sync: bool,
                 max_file_size: usize,
                 file_pool_size: usize)
                 -> Result<Log> {
+        let path_str = path;
         let path = PathBuf::from(path);
 
-        if path.exists() {
-            assert!(path.is_dir());
-        } else {
+        if path.exists() && !path.is_dir() {
+            return Err(Error::InvalidPath(path_str.to_string()));
+        } else if create {
             fs::create_dir(&path)?;
+        } else {
+            return Err(Error::InvalidPath(path_str.to_string()));
         }
 
         let lock_file = File::create(path.join(LOCK_FILE_NAME))?;

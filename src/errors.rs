@@ -14,6 +14,7 @@ pub enum Error {
     InvalidKeySize(usize),
     InvalidValueSize(usize),
     InvalidChecksum { expected: u32, found: u32 },
+    InvalidPath(String),
 }
 
 pub type Result<T> = result::Result<T, Error>;
@@ -41,6 +42,7 @@ impl Display for Error {
                        expected,
                        found)
             }
+            Error::InvalidPath(ref path) => write!(f, "Invalid path provided: {}", path),
         }
     }
 }
@@ -60,6 +62,7 @@ impl error::Error for Error {
             Error::InvalidChecksum { .. } => "Invalid checksum",
             Error::InvalidKeySize(..) => "Invalid key size",
             Error::InvalidValueSize(..) => "Invalid value size",
+            Error::InvalidPath(..) => "Invalid path",
         }
     }
 

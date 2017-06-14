@@ -166,6 +166,7 @@ pub struct Cask {
 
 #[derive(Clone)]
 pub struct CaskOptions {
+    create: bool,
     sync: SyncStrategy,
     max_file_size: usize,
     file_pool_size: usize,
@@ -189,6 +190,7 @@ pub enum SyncStrategy {
 impl Default for CaskOptions {
     fn default() -> CaskOptions {
         CaskOptions {
+            create: true,
             sync: SyncStrategy::Interval(1000),
             max_file_size: 2 * 1024 * 1024 * 1024,
             file_pool_size: 2048,
@@ -227,6 +229,11 @@ impl CaskOptions {
 
     pub fn compaction(&mut self, compaction: bool) -> &mut CaskOptions {
         self.compaction = compaction;
+        self
+    }
+
+    pub fn create(&mut self, create: bool) -> &mut CaskOptions {
+        self.create = create;
         self
     }
 
@@ -276,6 +283,7 @@ impl Cask {
     pub fn open(path: &str, options: CaskOptions) -> Result<Cask> {
         info!("Opening database: {:?}", &path);
         let mut log = Log::open(path,
+                                options.create,
                                 options.sync == SyncStrategy::Always,
                                 options.max_file_size,
                                 options.file_pool_size)?;
