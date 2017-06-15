@@ -1,6 +1,6 @@
 [package]
 name = "cask"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["Andre Silva"]
 description = "A fast key-value store backed by a log-structured hash table"
 repository = "https://github.com/andrebeat/cask"

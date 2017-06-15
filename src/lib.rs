@@ -8,19 +8,26 @@
 //! # Examples
 //!
 //! ```rust,no_run
-//! let cask = CaskOptions::default()
-//!     .compaction_check_frequency(1200)
-//!     .sync(SyncStrategy::Interval(5000))
-//!     .max_file_size(1024 * 1024 * 1024)
-//!     .open("cask.db")
-//!     .unwrap();
+//! use std::result::Result::Ok;
+//! use cask::{CaskOptions, SyncStrategy};
+//! use cask::errors::Result;
 //!
-//! let key = "hello";
-//! let value = "world";
+//! fn example() -> Result<()> {
+//!     let cask = CaskOptions::default()
+//!         .compaction_check_frequency(1200)
+//!         .sync(SyncStrategy::Interval(5000))
+//!         .max_file_size(1024 * 1024 * 1024)
+//!         .open("cask.db")?;
 //!
-//! cask.put(key, value)?;
-//! cask.get(key)?;
-//! cask.delete(key)?;
+//!     let key = "hello";
+//!     let value = "world";
+//!
+//!     cask.put(key, value)?;
+//!     cask.get(key)?;
+//!     cask.delete(key)?;
+//!
+//!     Ok(())
+//! }
 //! ```
 
 #![cfg_attr(feature="clippy", feature(plugin))]

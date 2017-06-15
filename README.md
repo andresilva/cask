@@ -20,7 +20,7 @@ of your dependencies:
 
 ```toml
 [dependencies]
-cask = "0.6.0"
+cask = "0.7.0"
 ```
 
 Then, use `Cask` in your crate:
