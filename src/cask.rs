@@ -155,6 +155,10 @@ impl CaskInner {
     }
 }
 
+/// An handle to a `Cask` database.
+///
+/// This handle can be "cheaply" cloned and safely shared between threads. `Cask`s cannot be used
+/// concurrently by separate processes and this is ensured by using a file lock in the `Cask` dir.
 #[derive(Clone)]
 pub struct Cask {
     path: PathBuf,
@@ -318,6 +322,7 @@ impl CaskOptions {
 }
 
 impl Cask {
+    /// Opens/creates a new `Cask`.
     pub fn open(path: &str, options: CaskOptions) -> Result<Cask> {
         info!("Opening database: {:?}", &path);
         let mut log = Log::open(path,
@@ -541,6 +546,7 @@ impl Cask {
         Ok(())
     }
 
+    /// Trigger `Cask` log compaction.
     pub fn compact(&self) -> Result<()> {
         #[allow(unused_variables)]
         let lock = self.compaction.lock().unwrap();
@@ -619,14 +625,17 @@ impl Cask {
         Ok(())
     }
 
+    /// Returns the value corresponding to the key, if any.
     pub fn get<K: AsRef<[u8]>>(&self, key: K) -> Result<Option<Vec<u8>>> {
         self.inner.read().unwrap().get(key.as_ref())
     }
 
+    /// Inserts a key-value pair into the map.
     pub fn put<K: Into<Vec<u8>>, V: AsRef<[u8]>>(&self, key: K, value: V) -> Result<()> {
         self.inner.write().unwrap().put(key.into(), value.as_ref())
     }
 
+    /// Removes a key from the map.
     pub fn delete<K: AsRef<[u8]>>(&self, key: K) -> Result<()> {
         self.inner.write().unwrap().delete(key.as_ref())
     }
