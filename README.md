@@ -7,7 +7,7 @@ which is inspired by [bitcask](https://github.com/basho/bitcask/).
 [![Crates.io](https://img.shields.io/crates/v/cask.svg?maxage=2592000)](https://crates.io/crates/cask)
 [![License](https://img.shields.io/dub/l/vibe-d.svg)](https://raw.githubusercontent.com/andrebeat/cask/master/LICENSE)
 
-[API Documentation](http://andrebeat.github.io/cask/cask/struct.Cask.html)
+[API Documentation](http://andrebeat.github.io/cask)
 
 * * *
 
