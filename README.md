@@ -39,8 +39,7 @@ let cask = CaskOptions::default()
     .compaction_check_frequency(1200)
     .sync(SyncStrategy::Interval(5000))
     .max_file_size(1024 * 1024 * 1024)
-    .open("cask.db")
-    .unwrap();
+    .open("cask.db")?;
 
 let key = "hello";
 let value = "world";
