@@ -35,7 +35,12 @@ use cask::{Cask, CaskOptions};
 The basic usage of the library is shown below:
 
 ```rust
-let cask = CaskOptions::default().sync(false).open("test.db")?;
+let cask = CaskOptions::default()
+    .compaction_check_frequency(1200)
+    .sync(SyncStrategy::Interval(5000))
+    .max_file_size(1024 * 1024 * 1024)
+    .open("cask.db")
+    .unwrap();
 
 let key = "hello";
 let value = "world";
@@ -50,7 +55,7 @@ cask.delete(key)?;
 - [X] Basic error handling
 - [X] Merge files during compaction
 - [X] Configurable compaction triggers and thresholds
-- [ ] Documentation
+- [X] Documentation
 - [ ] Tests
 - [ ] Benchmark
 - [ ] Handle database corruption
