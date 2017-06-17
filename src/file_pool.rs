@@ -22,15 +22,13 @@ impl FilePool {
     pub fn get(&mut self, file_id: u32) -> Option<File> {
         let mut remove = false;
 
-        let f = self.files
-            .get_mut(&file_id)
-            .and_then(|v| {
-                let f = v.pop();
-                if v.is_empty() {
-                    remove = true;
-                }
-                f
-            });
+        let f = self.files.get_mut(&file_id).and_then(|v| {
+            let f = v.pop();
+            if v.is_empty() {
+                remove = true;
+            }
+            f
+        });
 
         if f.is_some() {
             if remove {

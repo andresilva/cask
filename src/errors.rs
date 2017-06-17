@@ -33,22 +33,28 @@ impl Display for Error {
             Error::Io(ref err) => write!(f, "IO error: {}", err),
             Error::InvalidFileId(file_id) => write!(f, "Invalid file id: {}", file_id),
             Error::InvalidKeySize(size) => {
-                write!(f,
-                       "Invalid key size, max: {}, found: {}",
-                       MAX_KEY_SIZE,
-                       size)
+                write!(
+                    f,
+                    "Invalid key size, max: {}, found: {}",
+                    MAX_KEY_SIZE,
+                    size
+                )
             }
             Error::InvalidValueSize(size) => {
-                write!(f,
-                       "Invalid value size, max: {}, found: {}",
-                       MAX_VALUE_SIZE,
-                       size)
+                write!(
+                    f,
+                    "Invalid value size, max: {}, found: {}",
+                    MAX_VALUE_SIZE,
+                    size
+                )
             }
             Error::InvalidChecksum { expected, found } => {
-                write!(f,
-                       "Invalid checksum, expected: {}, found: {}",
-                       expected,
-                       found)
+                write!(
+                    f,
+                    "Invalid checksum, expected: {}, found: {}",
+                    expected,
+                    found
+                )
             }
             Error::InvalidPath(ref path) => write!(f, "Invalid path provided: {}", path),
         }

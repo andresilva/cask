@@ -44,21 +44,17 @@ impl Index {
 
     fn insert(&mut self, key: Vec<u8>, index_entry: IndexEntry) -> Option<IndexEntry> {
         self.stats.add_entry(&index_entry);
-        self.map
-            .insert(key, index_entry)
-            .map(|entry| {
-                self.stats.remove_entry(&entry);
-                entry
-            })
+        self.map.insert(key, index_entry).map(|entry| {
+            self.stats.remove_entry(&entry);
+            entry
+        })
     }
 
     fn remove(&mut self, key: &[u8]) -> Option<IndexEntry> {
-        self.map
-            .remove(key)
-            .map(|entry| {
-                self.stats.remove_entry(&entry);
-                entry
-            })
+        self.map.remove(key).map(|entry| {
+            self.stats.remove_entry(&entry);
+            entry
+        })
     }
 
     fn update(&mut self, hint: Hint, file_id: u32) {
@@ -104,14 +100,18 @@ impl CaskInner {
     fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
         let value = match self.index.get(key) {
             Some(index_entry) => {
-                let entry = self.log
-                    .read_entry(index_entry.file_id, index_entry.entry_pos)?;
+                let entry = self.log.read_entry(
+                    index_entry.file_id,
+                    index_entry.entry_pos,
+                )?;
                 if entry.deleted {
-                    warn!("Index pointed to dead entry: Entry {{ key: {:?}, sequence: {} }} at \
-                           file: {}",
-                          entry.key,
-                          entry.sequence,
-                          index_entry.file_id);
+                    warn!(
+                        "Index pointed to dead entry: Entry {{ key: {:?}, sequence: {} }} at \
+                         file: {}",
+                        entry.key,
+                        entry.sequence,
+                        index_entry.file_id
+                    );
                     None
                 } else {
                     Some(entry.value.into_owned())
@@ -268,9 +268,10 @@ impl CaskOptions {
     }
 
     /// Sets the frequency of compaction, in seconds. Defaults to `3600`.
-    pub fn compaction_check_frequency(&mut self,
-                                      compaction_check_frequency: u64)
-                                      -> &mut CaskOptions {
+    pub fn compaction_check_frequency(
+        &mut self,
+        compaction_check_frequency: u64,
+    ) -> &mut CaskOptions {
         self.compaction_check_frequency = compaction_check_frequency;
         self
     }
@@ -325,11 +326,13 @@ impl Cask {
     /// Opens/creates a new `Cask`.
     pub fn open(path: &str, options: CaskOptions) -> Result<Cask> {
         info!("Opening database: {:?}", &path);
-        let mut log = Log::open(path,
-                                options.create,
-                                options.sync == SyncStrategy::Always,
-                                options.max_file_size,
-                                options.file_pool_size)?;
+        let mut log = Log::open(
+            path,
+            options.create,
+            options.sync == SyncStrategy::Always,
+            options.max_file_size,
+            options.file_pool_size,
+        )?;
         let mut index = Index::new();
 
         let mut sequence = 0;
@@ -365,10 +368,10 @@ impl Cask {
             options: options,
             dropped: Arc::new(AtomicBool::new(false)),
             inner: Arc::new(RwLock::new(CaskInner {
-                                            current_sequence: sequence + 1,
-                                            log: log,
-                                            index: index,
-                                        })),
+                current_sequence: sequence + 1,
+                log: log,
+                index: index,
+            })),
             compaction: Arc::new(Mutex::new(())),
         };
 
@@ -379,8 +382,10 @@ impl Cask {
                 let duration = Duration::from_millis(millis as u64);
                 loop {
                     if cask.dropped.load(Ordering::SeqCst) {
-                        info!("Cask has been dropped, background file sync \
-                               thread is exiting");
+                        info!(
+                            "Cask has been dropped, background file sync \
+                             thread is exiting"
+                        );
                         break;
                     }
 
@@ -399,8 +404,10 @@ impl Cask {
                 let duration = Duration::from_secs(cask.options.compaction_check_frequency);
                 loop {
                     if cask.dropped.load(Ordering::SeqCst) {
-                        info!("Cask has been dropped, background compaction \
-                               thread is exiting");
+                        info!(
+                            "Cask has been dropped, background compaction \
+                             thread is exiting"
+                        );
                         break;
                     }
 
@@ -416,8 +423,10 @@ impl Cask {
                     };
 
                     if !in_window {
-                        info!("Compaction outside defined window {:?}",
-                              cask.options.compaction_window);
+                        info!(
+                            "Compaction outside defined window {:?}",
+                            cask.options.compaction_window
+                        );
                         continue;
                     } else if let Err(err) = cask.compact() {
                         warn!("Error during compaction: {}", err);
@@ -436,21 +445,19 @@ impl Cask {
             self.inner.read().unwrap().log.active_file_id
         };
 
-        let compacted_files_hints = files
-            .iter()
-            .flat_map(|&file_id| {
-                if active_file_id.is_some() && active_file_id.unwrap() == file_id {
-                    None
-                } else {
-                    self.inner
+        let compacted_files_hints = files.iter().flat_map(|&file_id| {
+            if active_file_id.is_some() && active_file_id.unwrap() == file_id {
+                None
+            } else {
+                self.inner
                         .read()
                         .unwrap()
                         .log
                         .hints(file_id)
                         .ok() // FIXME: log the error?
                         .and_then(|hints| hints.map(|h| (file_id, h)))
-                }
-            });
+            }
+        });
 
         let mut compacted_files = Vec::new();
         let mut new_files = Vec::new();
@@ -525,23 +532,21 @@ impl Cask {
             };
         }
 
-        self.inner
-            .write()
-            .unwrap()
-            .index
-            .stats
-            .remove_files(compacted_files);
+        self.inner.write().unwrap().index.stats.remove_files(
+            compacted_files,
+        );
 
-        self.inner
-            .write()
-            .unwrap()
-            .log
-            .swap_files(compacted_files, new_files)?;
+        self.inner.write().unwrap().log.swap_files(
+            compacted_files,
+            new_files,
+        )?;
 
         // FIXME: print files not compacted
-        info!("Finished compacting data files: {:?} into: {:?}",
-              compacted_files,
-              new_files);
+        info!(
+            "Finished compacting data files: {:?} into: {:?}",
+            compacted_files,
+            new_files
+        );
 
         Ok(())
     }
@@ -569,30 +574,39 @@ impl Cask {
 
             if !triggered {
                 if fragmentation >= self.options.fragmentation_trigger {
-                    info!("File {} has fragmentation factor of {:.1}%, triggered compaction",
-                          file_id,
-                          fragmentation * 100.0);
+                    info!(
+                        "File {} has fragmentation factor of {:.1}%, triggered compaction",
+                        file_id,
+                        fragmentation * 100.0
+                    );
                     triggered = true;
                     files.insert(file_id);
                 } else if dead_bytes >= self.options.dead_bytes_trigger &&
-                          !files.contains(&file_id) {
-                    info!("File {} has {} of dead data, triggered compaction",
-                          file_id,
-                          human_readable_byte_count(dead_bytes as usize, true));
+                           !files.contains(&file_id)
+                {
+                    info!(
+                        "File {} has {} of dead data, triggered compaction",
+                        file_id,
+                        human_readable_byte_count(dead_bytes as usize, true)
+                    );
                     triggered = true;
                     files.insert(file_id);
                 }
             }
 
             if fragmentation >= self.options.fragmentation_threshold && !files.contains(&file_id) {
-                info!("File {} has fragmentation factor of {:.1}%, adding for compaction",
-                      file_id,
-                      fragmentation * 100.0);
+                info!(
+                    "File {} has fragmentation factor of {:.1}%, adding for compaction",
+                    file_id,
+                    fragmentation * 100.0
+                );
                 files.insert(file_id);
             } else if dead_bytes >= self.options.dead_bytes_threshold && !files.contains(&file_id) {
-                info!("File {} has {} of dead data, adding for compaction",
-                      file_id,
-                      human_readable_byte_count(dead_bytes as usize, true));
+                info!(
+                    "File {} has {} of dead data, adding for compaction",
+                    file_id,
+                    human_readable_byte_count(dead_bytes as usize, true)
+                );
                 files.insert(file_id);
             }
 
@@ -603,9 +617,11 @@ impl Cask {
 
                 if let Some(file_size) = file_size {
                     if file_size <= self.options.small_file_threshold {
-                        info!("File {} has total size of {}, adding for compaction",
-                              file_id,
-                              human_readable_byte_count(file_size as usize, true));
+                        info!(
+                            "File {} has total size of {}, adding for compaction",
+                            file_id,
+                            human_readable_byte_count(file_size as usize, true)
+                        );
                         files.insert(file_id);
                     }
                 };
@@ -616,8 +632,10 @@ impl Cask {
             let files: Vec<_> = files.into_iter().collect();
             self.compact_files(&files)?;
         } else if !files.is_empty() {
-            info!("Compaction of files {:?} aborted due to missing trigger",
-                  &files);
+            info!(
+                "Compaction of files {:?} aborted due to missing trigger",
+                &files
+            );
         } else {
             info!("No files eligible for compaction")
         }

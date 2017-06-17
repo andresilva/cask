@@ -25,8 +25,9 @@ pub struct Entry<'a> {
 
 impl<'a> Entry<'a> {
     pub fn new<K, V>(sequence: SequenceNumber, key: K, value: V) -> Result<Entry<'a>>
-        where Cow<'a, [u8]>: From<K>,
-              Cow<'a, [u8]>: From<V>
+    where
+        Cow<'a, [u8]>: From<K>,
+        Cow<'a, [u8]>: From<V>,
     {
         let v = Cow::from(value);
         let k = Cow::from(key);
@@ -40,15 +41,16 @@ impl<'a> Entry<'a> {
         }
 
         Ok(Entry {
-               key: k,
-               value: v,
-               sequence: sequence,
-               deleted: false,
-           })
+            key: k,
+            value: v,
+            sequence: sequence,
+            deleted: false,
+        })
     }
 
     pub fn deleted<K>(sequence: SequenceNumber, key: K) -> Entry<'a>
-        where Cow<'a, [u8]>: From<K>
+    where
+        Cow<'a, [u8]>: From<K>,
     {
         Entry {
             key: Cow::from(key),
@@ -128,9 +130,9 @@ impl<'a> Entry<'a> {
 
         if hash != checksum {
             return Err(Error::InvalidChecksum {
-                           expected: checksum,
-                           found: hash,
-                       });
+                expected: checksum,
+                found: hash,
+            });
         }
 
         let sequence = cursor.read_u64::<LittleEndian>()?;
@@ -147,11 +149,13 @@ impl<'a> Entry<'a> {
         };
 
         Ok(Entry {
-               key: Cow::from(&bytes[ENTRY_STATIC_SIZE..ENTRY_STATIC_SIZE + key_size as usize]),
-               value: value,
-               sequence: sequence,
-               deleted: value_size == ENTRY_TOMBSTONE,
-           })
+            key: Cow::from(
+                &bytes[ENTRY_STATIC_SIZE..ENTRY_STATIC_SIZE + key_size as usize],
+            ),
+            value: value,
+            sequence: sequence,
+            deleted: value_size == ENTRY_TOMBSTONE,
+        })
     }
 
     pub fn from_read<R: Read>(reader: &mut R) -> Result<Entry<'a>> {
@@ -188,17 +192,17 @@ impl<'a> Entry<'a> {
 
         if hash != checksum {
             return Err(Error::InvalidChecksum {
-                           expected: checksum,
-                           found: hash,
-                       });
+                expected: checksum,
+                found: hash,
+            });
         }
 
         Ok(Entry {
-               key: Cow::from(key),
-               value: value,
-               sequence: sequence,
-               deleted: deleted,
-           })
+            key: Cow::from(key),
+            value: value,
+            sequence: sequence,
+            deleted: deleted,
+        })
     }
 }
 
@@ -263,12 +267,12 @@ impl<'a> Hint<'a> {
         let deleted = value_size == ENTRY_TOMBSTONE;
 
         Ok(Hint {
-               key: Cow::from(key),
-               entry_pos: entry_pos,
-               value_size: if deleted { 0 } else { value_size },
-               sequence: sequence,
-               deleted: value_size == ENTRY_TOMBSTONE,
-           })
+            key: Cow::from(key),
+            entry_pos: entry_pos,
+            value_size: if deleted { 0 } else { value_size },
+            sequence: sequence,
+            deleted: value_size == ENTRY_TOMBSTONE,
+        })
     }
 }
 
@@ -288,18 +292,26 @@ mod tests {
 
         assert_eq!(entry.to_bytes().unwrap().len(), 24);
 
-        assert_eq!(entry,
-                   Entry::from_bytes(&entry.to_bytes().unwrap()).unwrap());
-        assert_eq!(entry,
-                   Entry::from_read(&mut Cursor::new(entry.to_bytes().unwrap())).unwrap());
+        assert_eq!(
+            entry,
+            Entry::from_bytes(&entry.to_bytes().unwrap()).unwrap()
+        );
+        assert_eq!(
+            entry,
+            Entry::from_read(&mut Cursor::new(entry.to_bytes().unwrap())).unwrap()
+        );
         let mut v = Vec::new();
         entry.write_bytes(&mut v).unwrap();
         assert_eq!(entry, Entry::from_bytes(&v).unwrap());
 
-        assert_eq!(deleted_entry,
-                   Entry::from_bytes(&deleted_entry.to_bytes().unwrap()).unwrap());
-        assert_eq!(deleted_entry,
-                   Entry::from_read(&mut Cursor::new(deleted_entry.to_bytes().unwrap())).unwrap());
+        assert_eq!(
+            deleted_entry,
+            Entry::from_bytes(&deleted_entry.to_bytes().unwrap()).unwrap()
+        );
+        assert_eq!(
+            deleted_entry,
+            Entry::from_read(&mut Cursor::new(deleted_entry.to_bytes().unwrap())).unwrap()
+        );
         v.clear();
         deleted_entry.write_bytes(&mut v).unwrap();
         assert_eq!(deleted_entry, Entry::from_bytes(&v).unwrap());

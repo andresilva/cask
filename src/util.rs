@@ -71,9 +71,11 @@ pub fn human_readable_byte_count(bytes: usize, si: bool) -> String {
     let exp = ((bytes as f64).ln() / (unit as f64).ln()) as usize;
 
     let units = if si { "kMGTPE" } else { "KMGTPE" };
-    let pre = format!("{}{}",
-                      units.chars().nth(exp - 1).unwrap(),
-                      if si { "" } else { "i" });
+    let pre = format!(
+        "{}{}",
+        units.chars().nth(exp - 1).unwrap(),
+        if si { "" } else { "i" }
+    );
 
     format!("{:.1} {}B", bytes / unit.pow(exp as u32), pre)
 }

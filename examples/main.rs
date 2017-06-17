@@ -18,11 +18,13 @@ use cask::CaskOptions;
 fn init_logger() {
     let format = |record: &LogRecord| {
         let ts = time::strftime("%Y-%m-%d %H:%M:%S,%f", &time::now()).unwrap();
-        format!("{} {} {} {}",
-                &ts[..ts.len() - 6],
-                record.level(),
-                record.location().module_path(),
-                record.args())
+        format!(
+            "{} {} {} {}",
+            &ts[..ts.len() - 6],
+            record.level(),
+            record.location().module_path(),
+            record.args()
+        )
     };
 
     let mut builder = LogBuilder::new();
