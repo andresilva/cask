@@ -50,7 +50,7 @@ impl Log {
                 fs::create_dir(&path)?;
             }
         } else {
-            if !path.exists() {
+            if !path.exists() || !path.is_dir() {
                 return Err(Error::InvalidPath(path_str.to_string()));
             }
         }
