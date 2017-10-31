@@ -8,7 +8,6 @@
 //! # Examples
 //!
 //! ```rust,no_run
-//! use std::result::Result::Ok;
 //! use cask::{CaskOptions, SyncStrategy};
 //! use cask::errors::Result;
 //!

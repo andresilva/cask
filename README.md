@@ -27,7 +27,7 @@ Then, use `Cask` in your crate:
 
 ```rust
 extern crate cask;
-use cask::{Cask, CaskOptions};
+use cask::{CaskOptions, SyncStrategy};
 ```
 
 ## Usage
@@ -35,18 +35,36 @@ use cask::{Cask, CaskOptions};
 The basic usage of the library is shown below:
 
 ```rust
-let cask = CaskOptions::default()
-    .compaction_check_frequency(1200)
-    .sync(SyncStrategy::Interval(5000))
-    .max_file_size(1024 * 1024 * 1024)
-    .open("cask.db")?;
+extern crate cask;
 
-let key = "hello";
-let value = "world";
+use std::str;
+use cask::{CaskOptions, SyncStrategy};
+use cask::errors::Result;
 
-cask.put(key, value)?;
-cask.get(key)?;
-cask.delete(key)?;
+fn main() {
+    if let Err(e) = example() {
+        println!("{:?}", e);
+    }
+}
+
+fn example() -> Result<()> {
+    let cask = CaskOptions::default()
+        .compaction_check_frequency(1200)
+        .sync(SyncStrategy::Interval(5000))
+        .max_file_size(1024 * 1024 * 1024)
+        .open("cask.db")?;
+
+    let key = "hello";
+    let value = "world";
+
+    cask.put(key, value)?;
+
+    let v = cask.get(key)?;
+    println!("key:{},value:{}", key, str::from_utf8(&v.unwrap()).unwrap());
+
+    cask.delete(key)?;
+    Ok(())
+}
 ```
 
 ## TODO
