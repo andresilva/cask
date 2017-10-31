@@ -43,10 +43,16 @@ impl Log {
         let path_str = path;
         let path = PathBuf::from(path);
 
-        if !path.exists() && !create || path.exists() && !path.is_dir() {
-            return Err(Error::InvalidPath(path_str.to_string()));
+        if create {
+            if path.exists() && !path.is_dir() {
+                return Err(Error::InvalidPath(path_str.to_string()));
+            } else if !path.exists() {
+                fs::create_dir(&path)?;
+            }
         } else {
-            fs::create_dir(&path)?;
+            if !path.exists() || !path.is_dir() {
+                return Err(Error::InvalidPath(path_str.to_string()));
+            }
         }
 
         let lock_file = File::create(path.join(LOCK_FILE_NAME))?;
