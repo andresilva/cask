@@ -46,6 +46,8 @@ impl Log {
         if create {
             if path.exists() && !path.is_dir() {
                 return Err(Error::InvalidPath(path_str.to_string()));
+            } else if path.exists() && path.is_dir() {
+                warn!("{} is already exists. Skip to create.", path_str);
             } else if !path.exists() {
                 fs::create_dir(&path)?;
             }
