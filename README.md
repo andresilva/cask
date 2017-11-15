@@ -3,11 +3,11 @@
 A fast key-value store written in Rust. The underlying storage system is a log-structured hash table
 which is inspired by [bitcask](https://github.com/basho/bitcask/).
 
-[![Build Status](https://travis-ci.org/andrebeat/cask.svg?branch=master)](https://travis-ci.org/andrebeat/cask)
+[![Build Status](https://travis-ci.org/andresilva/cask.svg?branch=master)](https://travis-ci.org/andresilva/cask)
 [![Crates.io](https://img.shields.io/crates/v/cask.svg?maxage=2592000)](https://crates.io/crates/cask)
-[![License](https://img.shields.io/dub/l/vibe-d.svg)](https://raw.githubusercontent.com/andrebeat/cask/master/LICENSE)
+[![License](https://img.shields.io/dub/l/vibe-d.svg)](https://raw.githubusercontent.com/andresilva/cask/master/LICENSE)
 
-[API Documentation](http://andrebeat.github.io/cask)
+[API Documentation](http://andresilva.github.io/cask)
 
 * * *
 
