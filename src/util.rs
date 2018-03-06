@@ -1,18 +1,17 @@
 use std::fs::{File, OpenOptions};
+use std::hash::Hasher;
 use std::io::{Result, Write};
 use std::path::Path;
 use std::result::Result::Ok;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use std::hash::Hasher;
+use twox_hash::XxHash32 as TwoXhash32;
 
-use twox_hash::XxHash32;
+pub struct XxHash32(TwoXhash32);
 
-pub struct TwoXhash32(XxHash32);
-
-impl TwoXhash32 {
-    pub fn new() -> TwoXhash32 {
-        TwoXhash32(XxHash32::with_seed(0))
+impl XxHash32 {
+    pub fn new() -> XxHash32 {
+        XxHash32(TwoXhash32::with_seed(0))
     }
 
     pub fn update(&mut self, buf: &[u8]) {
@@ -24,7 +23,7 @@ impl TwoXhash32 {
     }
 }
 
-impl Write for TwoXhash32 {
+impl Write for XxHash32 {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
         self.update(buf);
         Ok(buf.len())
@@ -36,7 +35,7 @@ impl Write for TwoXhash32 {
 }
 
 pub fn xxhash32(buf: &[u8]) -> u32 {
-    let mut hash = XxHash32::with_seed(0);
+    let mut hash = TwoXhash32::with_seed(0);
     hash.write(buf);
     hash.finish() as u32
 }

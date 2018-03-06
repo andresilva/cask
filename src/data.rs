@@ -6,7 +6,7 @@ use std::result::Result::{Err, Ok};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use errors::{Error, Result};
-use util::{TwoXhash32, xxhash32};
+use util::{XxHash32, xxhash32};
 
 const ENTRY_STATIC_SIZE: usize = 18; // checksum(4) + sequence(8) + key_size(2) + value_size(4)
 const ENTRY_TOMBSTONE: u32 = !0;
@@ -100,7 +100,7 @@ impl<'a> Entry<'a> {
         }
 
         let checksum = {
-            let mut hasher = TwoXhash32::new();
+            let mut hasher = XxHash32::new();
             hasher.update(&cursor.get_ref()[4..]);
             hasher.update(&self.key);
             hasher.update(&self.value);
@@ -183,7 +183,7 @@ impl<'a> Entry<'a> {
         };
 
         let hash = {
-            let mut hasher = TwoXhash32::new();
+            let mut hasher = XxHash32::new();
             hasher.update(&cursor.get_ref()[4..]);
             hasher.update(&key);
             hasher.update(&value);

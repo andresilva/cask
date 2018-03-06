@@ -15,7 +15,7 @@ use regex::Regex;
 use data::{Entry, Hint};
 use errors::{Error, Result};
 use file_pool::FilePool;
-use util::{Sequence, TwoXhash32, get_file_handle, human_readable_byte_count, xxhash32};
+use util::{Sequence, XxHash32, get_file_handle, human_readable_byte_count, xxhash32};
 
 const DATA_FILE_EXTENSION: &'static str = "cask.data";
 const HINT_FILE_EXTENSION: &'static str = "cask.hint";
@@ -366,7 +366,7 @@ impl Drop for EntryWriter {
 
 struct HintWriter {
     hint_file: File,
-    hint_file_hasher: TwoXhash32,
+    hint_file_hasher: XxHash32,
 }
 
 impl HintWriter {
@@ -375,7 +375,7 @@ impl HintWriter {
 
         Ok(HintWriter {
             hint_file: hint_file,
-            hint_file_hasher: TwoXhash32::new(),
+            hint_file_hasher: XxHash32::new(),
         })
     }
 
