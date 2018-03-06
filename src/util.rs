@@ -1,26 +1,25 @@
 use std::fs::{File, OpenOptions};
+use std::hash::Hasher;
 use std::io::{Result, Write};
 use std::path::Path;
 use std::result::Result::Ok;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use xxhash2::{State32, hash32};
+use twox_hash::XxHash32 as TwoXhash32;
 
-pub struct XxHash32(State32);
+pub struct XxHash32(TwoXhash32);
 
 impl XxHash32 {
     pub fn new() -> XxHash32 {
-        let mut state = State32::new();
-        state.reset(0);
-        XxHash32(state)
+        XxHash32(TwoXhash32::with_seed(0))
     }
 
     pub fn update(&mut self, buf: &[u8]) {
-        self.0.update(buf);
+        self.0.write(buf);
     }
 
     pub fn get(&self) -> u32 {
-        self.0.finish()
+        self.0.finish() as u32
     }
 }
 
@@ -36,7 +35,9 @@ impl Write for XxHash32 {
 }
 
 pub fn xxhash32(buf: &[u8]) -> u32 {
-    hash32(buf, 0)
+    let mut hash = TwoXhash32::with_seed(0);
+    hash.write(buf);
+    hash.finish() as u32
 }
 
 pub fn get_file_handle(path: &Path, write: bool) -> Result<File> {

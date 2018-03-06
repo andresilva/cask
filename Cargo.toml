@@ -15,7 +15,7 @@ lazy_static = "~0.2.8"
 log = "~0.3.7"
 regex = "~0.2.1"
 time = "~0.1.37"
-xxhash2 = "~0.1.0"
+twox-hash = "1.1.0"
 clippy = {version = "~0.0.138", optional = true}
 
 [dev-dependencies]

@@ -40,7 +40,7 @@ extern crate byteorder;
 extern crate fs2;
 extern crate regex;
 extern crate time;
-extern crate xxhash2;
+extern crate twox_hash;
 
 mod cask;
 mod data;
