@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["SyncStrategy","Strategy used to synchronize writes to disk."]],"mod":[["errors",""]],"struct":[["Cask","An handle to a `Cask` database."],["CaskOptions","`Cask` configuration. Provides control over the properties and behavior of the `Cask` instance."]]});

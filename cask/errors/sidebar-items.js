@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["Error","Basic type to represent all possible errors that can occur when interacting with a `Cask`."]],"type":[["Result","Value returned from potentially-error operations."]]});

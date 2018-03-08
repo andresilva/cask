@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `CaskOptions` struct in crate `cask`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, CaskOptions">
+
+    <title>cask::CaskOptions - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../normalize.css">
+    <link rel="stylesheet" type="text/css" href="../rustdoc.css">
+    <link rel="stylesheet" type="text/css" href="../main.css">
+    
+
+    
+    
+</head>
+<body class="rustdoc struct">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <nav class="sidebar">
+        <div class="sidebar-menu">&#9776;</div>
+        
+        <p class='location'>Struct CaskOptions</p><div class="sidebar-elems"><div class="block items"><a class="sidebar-title" href="#methods">Methods</a><div class="sidebar-links"><a href="#method.new">new</a><a href="#method.sync">sync</a><a href="#method.max_file_size">max_file_size</a><a href="#method.file_pool_size">file_pool_size</a><a href="#method.compaction">compaction</a><a href="#method.create">create</a><a href="#method.compaction_check_frequency">compaction_check_frequency</a><a href="#method.compaction_window">compaction_window</a><a href="#method.fragmentation_trigger">fragmentation_trigger</a><a href="#method.dead_bytes_trigger">dead_bytes_trigger</a><a href="#method.fragmentation_threshold">fragmentation_threshold</a><a href="#method.dead_bytes_threshold">dead_bytes_threshold</a><a href="#method.small_file_threshold">small_file_threshold</a><a href="#method.open">open</a></div><a class="sidebar-title" href="#implementations">Trait Implementations</a><div class="sidebar-links"><a href="#impl-Clone">Clone</a><a href="#impl-Default">Default</a></div></div><p class='location'><a href='index.html'>cask</a></p><script>window.sidebarCurrent = {name: 'CaskOptions', ty: 'struct', relpath: ''};</script><script defer src="sidebar-items.js"></script></div>
+    </nav>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press ‘S’ to search, ‘?’ for more options…"
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content">
+<h1 class='fqn'><span class='in-band'>Struct <a href='index.html'>cask</a>::<wbr><a class="struct" href=''>CaskOptions</a></span><span class='out-of-band'><span id='render-detail'>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a class='srclink' href='../src/cask/cask.rs.html#186-199' title='goto source code'>[src]</a></span></h1>
+<pre class='rust struct'>pub struct CaskOptions { /* fields omitted */ }</pre><div class='docblock'><p><code>Cask</code> configuration. Provides control over the properties and behavior of the <code>Cask</code> instance.</p>
+
+<h1 id='examples' class='section-header'><a href='#examples'>Examples</a></h1>
+<pre class="rust rust-example-rendered">
+<span class="kw">use</span> <span class="ident">cask</span>::{<span class="ident">CaskOptions</span>, <span class="ident">SyncStrategy</span>};
+
+<span class="kw">let</span> <span class="ident">cask</span> <span class="op">=</span> <span class="ident">CaskOptions</span>::<span class="ident">default</span>()
+    .<span class="ident">compaction_check_frequency</span>(<span class="number">1200</span>)
+    .<span class="ident">sync</span>(<span class="ident">SyncStrategy</span>::<span class="ident">Never</span>)
+    .<span class="ident">max_file_size</span>(<span class="number">1024</span> <span class="op">*</span> <span class="number">1024</span> <span class="op">*</span> <span class="number">1024</span>)
+    .<span class="ident">open</span>(<span class="string">&quot;cask.db&quot;</span>)
+    .<span class="ident">unwrap</span>();</pre>
+</div>
+                    <h2 id='methods' class='small-section-header'>
+                      Methods<a href='#methods' class='anchor'></a>
+                    </h2>
+                <h3 id='impl' class='impl'><span class='in-band'><code>impl <a class="struct" href="../cask/struct.CaskOptions.html" title="struct cask::CaskOptions">CaskOptions</a></code><a href='#impl' class='anchor'></a></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#232-323' title='goto source code'>[src]</a></span></h3>
+<div class='impl-items'><h4 id='method.new' class="method"><span id='new.v' class='invisible'><code>pub fn <a href='#method.new' class='fnname'>new</a>() -&gt; <a class="struct" href="../cask/struct.CaskOptions.html" title="struct cask::CaskOptions">CaskOptions</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#235-237' title='goto source code'>[src]</a></span></h4>
+<div class='docblock'><p>Generates the base configuration for opening a <code>Cask</code>, from which configuration methods can
+be chained.</p>
+</div><h4 id='method.sync' class="method"><span id='sync.v' class='invisible'><code>pub fn <a href='#method.sync' class='fnname'>sync</a>(&amp;mut self, sync: <a class="enum" href="../cask/enum.SyncStrategy.html" title="enum cask::SyncStrategy">SyncStrategy</a>) -&gt; &amp;mut <a class="struct" href="../cask/struct.CaskOptions.html" title="struct cask::CaskOptions">CaskOptions</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#241-244' title='goto source code'>[src]</a></span></h4>
+<div class='docblock'><p>Sets the strategy used to synchronize writes to disk. Defaults to
+<code>SyncStrategy::Interval(1000)</code>.</p>
+</div><h4 id='method.max_file_size' class="method"><span id='max_file_size.v' class='invisible'><code>pub fn <a href='#method.max_file_size' class='fnname'>max_file_size</a>(&amp;mut self, max_file_size: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a>) -&gt; &amp;mut <a class="struct" href="../cask/struct.CaskOptions.html" title="struct cask::CaskOptions">CaskOptions</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#247-250' title='goto source code'>[src]</a></span></h4>
+<div class='docblock'><p>Sets the maximum file size. Defaults to <code>2GB</code>.</p>
+</div><h4 id='method.file_pool_size' class="method"><span id='file_pool_size.v' class='invisible'><code>pub fn <a href='#method.file_pool_size' class='fnname'>file_pool_size</a>(&amp;mut self, file_pool_size: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a>) -&gt; &amp;mut <a class="struct" href="../cask/struct.CaskOptions.html" title="struct cask::CaskOptions">CaskOptions</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#253-256' title='goto source code'>[src]</a></span></h4>
+<div class='docblock'><p>Sets the maximum size of the file descriptor cache. Defaults to <code>2048</code>.</p>
+</div><h4 id='method.compaction' class="method"><span id='compaction.v' class='invisible'><code>pub fn <a href='#method.compaction' class='fnname'>compaction</a>(&amp;mut self, compaction: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>) -&gt; &amp;mut <a class="struct" href="../cask/struct.CaskOptions.html" title="struct cask::CaskOptions">CaskOptions</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#259-262' title='goto source code'>[src]</a></span></h4>
+<div class='docblock'><p>Enable or disable background compaction. Defaults to <code>true</code>.</p>
+</div><h4 id='method.create' class="method"><span id='create.v' class='invisible'><code>pub fn <a href='#method.create' class='fnname'>create</a>(&amp;mut self, create: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>) -&gt; &amp;mut <a class="struct" href="../cask/struct.CaskOptions.html" title="struct cask::CaskOptions">CaskOptions</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#265-268' title='goto source code'>[src]</a></span></h4>
+<div class='docblock'><p>Create <code>Cask</code> if it doesn&#39;t exist. Defaults to <code>true</code>.</p>
+</div><h4 id='method.compaction_check_frequency' class="method"><span id='compaction_check_frequency.v' class='invisible'><code>pub fn <a href='#method.compaction_check_frequency' class='fnname'>compaction_check_frequency</a>(<br>&nbsp;&nbsp;&nbsp;&nbsp;&amp;mut self, <br>&nbsp;&nbsp;&nbsp;&nbsp;compaction_check_frequency: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.u64.html">u64</a><br>) -&gt; &amp;mut <a class="struct" href="../cask/struct.CaskOptions.html" title="struct cask::CaskOptions">CaskOptions</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#271-277' title='goto source code'>[src]</a></span></h4>
+<div class='docblock'><p>Sets the frequency of compaction, in seconds. Defaults to <code>3600</code>.</p>
+</div><h4 id='method.compaction_window' class="method"><span id='compaction_window.v' class='invisible'><code>pub fn <a href='#method.compaction_window' class='fnname'>compaction_window</a>(<br>&nbsp;&nbsp;&nbsp;&nbsp;&amp;mut self, <br>&nbsp;&nbsp;&nbsp;&nbsp;start: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a>, <br>&nbsp;&nbsp;&nbsp;&nbsp;end: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a><br>) -&gt; &amp;mut <a class="struct" href="../cask/struct.CaskOptions.html" title="struct cask::CaskOptions">CaskOptions</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#280-283' title='goto source code'>[src]</a></span></h4>
+<div class='docblock'><p>Sets the time window during which compaction can run. Defaults to <code>[0, 23]</code>.</p>
+</div><h4 id='method.fragmentation_trigger' class="method"><span id='fragmentation_trigger.v' class='invisible'><code>pub fn <a href='#method.fragmentation_trigger' class='fnname'>fragmentation_trigger</a>(<br>&nbsp;&nbsp;&nbsp;&nbsp;&amp;mut self, <br>&nbsp;&nbsp;&nbsp;&nbsp;fragmentation_trigger: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.f64.html">f64</a><br>) -&gt; &amp;mut <a class="struct" href="../cask/struct.CaskOptions.html" title="struct cask::CaskOptions">CaskOptions</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#287-290' title='goto source code'>[src]</a></span></h4>
+<div class='docblock'><p>Sets the ratio of dead entries to total entries in a file that will trigger compaction.
+Defaults to <code>0.6</code>.</p>
+</div><h4 id='method.dead_bytes_trigger' class="method"><span id='dead_bytes_trigger.v' class='invisible'><code>pub fn <a href='#method.dead_bytes_trigger' class='fnname'>dead_bytes_trigger</a>(<br>&nbsp;&nbsp;&nbsp;&nbsp;&amp;mut self, <br>&nbsp;&nbsp;&nbsp;&nbsp;dead_bytes_trigger: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.u64.html">u64</a><br>) -&gt; &amp;mut <a class="struct" href="../cask/struct.CaskOptions.html" title="struct cask::CaskOptions">CaskOptions</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#294-297' title='goto source code'>[src]</a></span></h4>
+<div class='docblock'><p>Sets the minimum amount of data occupied by dead entries in a single file that will trigger
+compaction. Defaults to <code>512MB</code>.</p>
+</div><h4 id='method.fragmentation_threshold' class="method"><span id='fragmentation_threshold.v' class='invisible'><code>pub fn <a href='#method.fragmentation_threshold' class='fnname'>fragmentation_threshold</a>(<br>&nbsp;&nbsp;&nbsp;&nbsp;&amp;mut self, <br>&nbsp;&nbsp;&nbsp;&nbsp;fragmentation_threshold: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.f64.html">f64</a><br>) -&gt; &amp;mut <a class="struct" href="../cask/struct.CaskOptions.html" title="struct cask::CaskOptions">CaskOptions</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#301-304' title='goto source code'>[src]</a></span></h4>
+<div class='docblock'><p>Sets the ratio of dead entries to total entries in a file that will cause it to be included
+in a compaction. Defaults to <code>0.4</code>.</p>
+</div><h4 id='method.dead_bytes_threshold' class="method"><span id='dead_bytes_threshold.v' class='invisible'><code>pub fn <a href='#method.dead_bytes_threshold' class='fnname'>dead_bytes_threshold</a>(<br>&nbsp;&nbsp;&nbsp;&nbsp;&amp;mut self, <br>&nbsp;&nbsp;&nbsp;&nbsp;dead_bytes_threshold: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.u64.html">u64</a><br>) -&gt; &amp;mut <a class="struct" href="../cask/struct.CaskOptions.html" title="struct cask::CaskOptions">CaskOptions</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#308-311' title='goto source code'>[src]</a></span></h4>
+<div class='docblock'><p>Sets the minimum amount of data occupied by dead entries in a single file that will cause it
+to be included in a compaction. Defaults to <code>128MB</code>.</p>
+</div><h4 id='method.small_file_threshold' class="method"><span id='small_file_threshold.v' class='invisible'><code>pub fn <a href='#method.small_file_threshold' class='fnname'>small_file_threshold</a>(<br>&nbsp;&nbsp;&nbsp;&nbsp;&amp;mut self, <br>&nbsp;&nbsp;&nbsp;&nbsp;small_file_threshold: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.u64.html">u64</a><br>) -&gt; &amp;mut <a class="struct" href="../cask/struct.CaskOptions.html" title="struct cask::CaskOptions">CaskOptions</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#314-317' title='goto source code'>[src]</a></span></h4>
+<div class='docblock'><p>Sets the minimum size a file must have to be excluded from compaction. Defaults to <code>10MB</code>.</p>
+</div><h4 id='method.open' class="method"><span id='open.v' class='invisible'><code>pub fn <a href='#method.open' class='fnname'>open</a>(&amp;self, path: &amp;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>) -&gt; <a class="type" href="../cask/errors/type.Result.html" title="type cask::errors::Result">Result</a>&lt;<a class="struct" href="../cask/struct.Cask.html" title="struct cask::Cask">Cask</a>&gt;</code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#320-322' title='goto source code'>[src]</a></span></h4>
+<div class='docblock'><p>Opens/creates a <code>Cask</code> at <code>path</code>.</p>
+</div></div>
+            <h2 id='implementations' class='small-section-header'>
+              Trait Implementations<a href='#implementations' class='anchor'></a>
+            </h2>
+        <h3 id='impl-Clone' class='impl'><span class='in-band'><code>impl <a class="trait" href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html" title="trait core::clone::Clone">Clone</a> for <a class="struct" href="../cask/struct.CaskOptions.html" title="struct cask::CaskOptions">CaskOptions</a></code><a href='#impl-Clone' class='anchor'></a></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#185' title='goto source code'>[src]</a></span></h3>
+<div class='impl-items'><h4 id='method.clone' class="method"><span id='clone.v' class='invisible'><code>fn <a href='https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone' class='fnname'>clone</a>(&amp;self) -&gt; <a class="struct" href="../cask/struct.CaskOptions.html" title="struct cask::CaskOptions">CaskOptions</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#185' title='goto source code'>[src]</a></span></h4>
+<div class='docblock'><p>Returns a copy of the value. <a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone">Read more</a></p>
+</div><h4 id='method.clone_from' class="method"><span id='clone_from.v' class='invisible'><code>fn <a href='https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#method.clone_from' class='fnname'>clone_from</a>(&amp;mut self, source: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.reference.html">&amp;</a>Self)</code></span><span class='out-of-band'><div class='ghost'></div><div class='since' title='Stable since Rust version 1.0.0'>1.0.0</div><a class='srclink' href='https://doc.rust-lang.org/nightly/src/core/clone.rs.html#112-114' title='goto source code'>[src]</a></span></h4>
+<div class='docblock'><p>Performs copy-assignment from <code>source</code>. <a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#method.clone_from">Read more</a></p>
+</div></div><h3 id='impl-Default' class='impl'><span class='in-band'><code>impl <a class="trait" href="https://doc.rust-lang.org/nightly/core/default/trait.Default.html" title="trait core::default::Default">Default</a> for <a class="struct" href="../cask/struct.CaskOptions.html" title="struct cask::CaskOptions">CaskOptions</a></code><a href='#impl-Default' class='anchor'></a></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#212-229' title='goto source code'>[src]</a></span></h3>
+<div class='impl-items'><h4 id='method.default' class="method"><span id='default.v' class='invisible'><code>fn <a href='https://doc.rust-lang.org/nightly/core/default/trait.Default.html#tymethod.default' class='fnname'>default</a>() -&gt; <a class="struct" href="../cask/struct.CaskOptions.html" title="struct cask::CaskOptions">CaskOptions</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../src/cask/cask.rs.html#213-228' title='goto source code'>[src]</a></span></h4>
+<div class='docblock'><p>Returns the &quot;default value&quot; for a type. <a href="https://doc.rust-lang.org/nightly/core/default/trait.Default.html#tymethod.default">Read more</a></p>
+</div></div></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <aside id="help" class="hidden">
+        <div>
+            <h1 class="hidden">Help</h1>
+
+            <div class="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+
+                <dl>
+                    <dt>?</dt>
+                    <dd>Show this help dialog</dd>
+                    <dt>S</dt>
+                    <dd>Focus the search field</dd>
+                    <dt>↑</dt>
+                    <dd>Move up in search results</dd>
+                    <dt>↓</dt>
+                    <dd>Move down in search results</dd>
+                    <dt>↹</dt>
+                    <dd>Switch tab</dd>
+                    <dt>&#9166;</dt>
+                    <dd>Go to active search result</dd>
+                    <dt style="width:31px;">+ / -</dt>
+                    <dd>Collapse/expand all sections</dd>
+                </dl>
+            </div>
+
+            <div class="infos">
+                <h2>Search Tricks</h2>
+
+                <p>
+                    Prefix searches with a type followed by a colon (e.g.
+                    <code>fn:</code>) to restrict the search to a given type.
+                </p>
+
+                <p>
+                    Accepted types are: <code>fn</code>, <code>mod</code>,
+                    <code>struct</code>, <code>enum</code>,
+                    <code>trait</code>, <code>type</code>, <code>macro</code>,
+                    and <code>const</code>.
+                </p>
+
+                <p>
+                    Search functions by type signature (e.g.
+                    <code>vec -> usize</code> or <code>* -> vec</code>)
+                </p>
+            </div>
+        </div>
+    </aside>
+
+    
+
+    <script>
+        window.rootPath = "../";
+        window.currentCrate = "cask";
+    </script>
+    <script src="../main.js"></script>
+    <script defer src="../search-index.js"></script>
+</body>
+</html>

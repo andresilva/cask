@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `cask` crate.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, cask">
+
+    <title>cask - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../normalize.css">
+    <link rel="stylesheet" type="text/css" href="../rustdoc.css">
+    <link rel="stylesheet" type="text/css" href="../main.css">
+    
+
+    
+    
+</head>
+<body class="rustdoc mod">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <nav class="sidebar">
+        <div class="sidebar-menu">&#9776;</div>
+        
+        <p class='location'>Crate cask</p><div class="sidebar-elems"><div class="block items"><ul><li><a href="#modules">Modules</a></li><li><a href="#structs">Structs</a></li><li><a href="#enums">Enums</a></li></ul></div><p class='location'></p><script>window.sidebarCurrent = {name: 'cask', ty: 'mod', relpath: '../'};</script></div>
+    </nav>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press ‘S’ to search, ‘?’ for more options…"
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content">
+<h1 class='fqn'><span class='in-band'>Crate <a class="mod" href=''>cask</a></span><span class='out-of-band'><span id='render-detail'>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a class='srclink' href='../src/cask/lib.rs.html#1-53' title='goto source code'>[src]</a></span></h1>
+<div class='docblock'><p><code>Cask</code> is a key-value store backed by a log-structured hash table which is inspired by
+<a href="https://github.com/basho/bitcask/">bitcask</a>.</p>
+
+<p>Keys are indexed in a <code>HashMap</code> and values are written to an append-only log. To avoid the log
+from getting filled with stale data (updated/deleted entries) a compaction process runs in the
+background which rewrites the log by removing dead entries and merging log files.</p>
+
+<h1 id='examples' class='section-header'><a href='#examples'>Examples</a></h1>
+<pre class="rust rust-example-rendered">
+<span class="kw">use</span> <span class="ident">cask</span>::{<span class="ident">CaskOptions</span>, <span class="ident">SyncStrategy</span>};
+<span class="kw">use</span> <span class="ident">cask</span>::<span class="ident">errors</span>::<span class="prelude-ty">Result</span>;
+
+<span class="kw">fn</span> <span class="ident">example</span>() <span class="op">-&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span> {
+    <span class="kw">let</span> <span class="ident">cask</span> <span class="op">=</span> <span class="ident">CaskOptions</span>::<span class="ident">default</span>()
+        .<span class="ident">compaction_check_frequency</span>(<span class="number">1200</span>)
+        .<span class="ident">sync</span>(<span class="ident">SyncStrategy</span>::<span class="ident">Interval</span>(<span class="number">5000</span>))
+        .<span class="ident">max_file_size</span>(<span class="number">1024</span> <span class="op">*</span> <span class="number">1024</span> <span class="op">*</span> <span class="number">1024</span>)
+        .<span class="ident">open</span>(<span class="string">&quot;cask.db&quot;</span>)<span class="question-mark">?</span>;
+
+    <span class="kw">let</span> <span class="ident">key</span> <span class="op">=</span> <span class="string">&quot;hello&quot;</span>;
+    <span class="kw">let</span> <span class="ident">value</span> <span class="op">=</span> <span class="string">&quot;world&quot;</span>;
+
+    <span class="ident">cask</span>.<span class="ident">put</span>(<span class="ident">key</span>, <span class="ident">value</span>)<span class="question-mark">?</span>;
+    <span class="ident">cask</span>.<span class="ident">get</span>(<span class="ident">key</span>)<span class="question-mark">?</span>;
+    <span class="ident">cask</span>.<span class="ident">delete</span>(<span class="ident">key</span>)<span class="question-mark">?</span>;
+
+    <span class="prelude-val">Ok</span>(())
+}</pre>
+</div><h2 id='modules' class='section-header'><a href="#modules">Modules</a></h2>
+<table>
+                       <tr class=' module-item'>
+                           <td><a class="mod" href="errors/index.html"
+                                  title='mod cask::errors'>errors</a></td>
+                           <td class='docblock-short'>
+                                
+                           </td>
+                       </tr></table><h2 id='structs' class='section-header'><a href="#structs">Structs</a></h2>
+<table>
+                       <tr class=' module-item'>
+                           <td><a class="struct" href="struct.Cask.html"
+                                  title='struct cask::Cask'>Cask</a></td>
+                           <td class='docblock-short'>
+                                <p>An handle to a <code>Cask</code> database.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="struct" href="struct.CaskOptions.html"
+                                  title='struct cask::CaskOptions'>CaskOptions</a></td>
+                           <td class='docblock-short'>
+                                <p><code>Cask</code> configuration. Provides control over the properties and behavior of the <code>Cask</code> instance.</p>
+                           </td>
+                       </tr></table><h2 id='enums' class='section-header'><a href="#enums">Enums</a></h2>
+<table>
+                       <tr class=' module-item'>
+                           <td><a class="enum" href="enum.SyncStrategy.html"
+                                  title='enum cask::SyncStrategy'>SyncStrategy</a></td>
+                           <td class='docblock-short'>
+                                <p>Strategy used to synchronize writes to disk.</p>
+                           </td>
+                       </tr></table></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <aside id="help" class="hidden">
+        <div>
+            <h1 class="hidden">Help</h1>
+
+            <div class="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+
+                <dl>
+                    <dt>?</dt>
+                    <dd>Show this help dialog</dd>
+                    <dt>S</dt>
+                    <dd>Focus the search field</dd>
+                    <dt>↑</dt>
+                    <dd>Move up in search results</dd>
+                    <dt>↓</dt>
+                    <dd>Move down in search results</dd>
+                    <dt>↹</dt>
+                    <dd>Switch tab</dd>
+                    <dt>&#9166;</dt>
+                    <dd>Go to active search result</dd>
+                    <dt style="width:31px;">+ / -</dt>
+                    <dd>Collapse/expand all sections</dd>
+                </dl>
+            </div>
+
+            <div class="infos">
+                <h2>Search Tricks</h2>
+
+                <p>
+                    Prefix searches with a type followed by a colon (e.g.
+                    <code>fn:</code>) to restrict the search to a given type.
+                </p>
+
+                <p>
+                    Accepted types are: <code>fn</code>, <code>mod</code>,
+                    <code>struct</code>, <code>enum</code>,
+                    <code>trait</code>, <code>type</code>, <code>macro</code>,
+                    and <code>const</code>.
+                </p>
+
+                <p>
+                    Search functions by type signature (e.g.
+                    <code>vec -> usize</code> or <code>* -> vec</code>)
+                </p>
+            </div>
+        </div>
+    </aside>
+
+    
+
+    <script>
+        window.rootPath = "../";
+        window.currentCrate = "cask";
+    </script>
+    <script src="../main.js"></script>
+    <script defer src="../search-index.js"></script>
+</body>
+</html>
