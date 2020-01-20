@@ -665,8 +665,16 @@ impl Cask {
         self.inner.write().unwrap().delete(key.as_ref())
     }
 
+    /// Returns all keys stored in the map.
     pub fn keys(&self) -> Vec<Vec<u8>> {
         self.inner.read().unwrap().keys().cloned().collect()
+    }
+}
+
+impl Drop for Cask {
+    fn drop(&mut self) {
+        self.dropped.store(true, Ordering::SeqCst);
+        let _lock = self.compaction.lock().unwrap();
     }
 }
 
@@ -708,12 +716,5 @@ mod tests {
         assert_eq!(keys[1], key2);
 
         assert!(fs::remove_dir_all("test.db").is_ok());
-    }
-}
-
-impl Drop for Cask {
-    fn drop(&mut self) {
-        self.dropped.store(true, Ordering::SeqCst);
-        let _lock = self.compaction.lock().unwrap();
     }
 }
