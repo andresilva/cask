@@ -1,5 +1,5 @@
 use std::collections::{BTreeSet, HashMap};
-use std::collections::hash_map::Entry as HashMapEntry;
+use std::collections::hash_map::{Entry as HashMapEntry, Keys};
 use std::default::Default;
 use std::path::PathBuf;
 use std::result::Result::Ok;
@@ -88,6 +88,10 @@ impl Index {
             }
         }
     }
+
+    pub fn keys(&self) -> Keys<Vec<u8>, IndexEntry> {
+        self.map.keys()
+    }
 }
 
 struct CaskInner {
@@ -152,6 +156,10 @@ impl CaskInner {
         }
 
         Ok(())
+    }
+
+    pub fn keys(&self) -> Keys<Vec<u8>, IndexEntry> {
+        self.index.keys()
     }
 }
 
@@ -655,6 +663,51 @@ impl Cask {
     /// Removes a key from the map.
     pub fn delete<K: AsRef<[u8]>>(&self, key: K) -> Result<()> {
         self.inner.write().unwrap().delete(key.as_ref())
+    }
+
+    pub fn keys(&self) -> Vec<Vec<u8>> {
+        self.inner.read().unwrap().keys().cloned().collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cask::CaskOptions;
+    use std::fs;
+
+    #[test]
+    fn test_keys() {
+        let cask_result = CaskOptions::default()
+            .compaction_check_frequency(1)
+            .max_file_size(50 * 1024 * 1024)
+            .open("test.db");
+
+        assert!(cask_result.is_ok());
+
+        let cask = cask_result.unwrap();
+
+        let key1: &[u8] = &[0];
+        let key2: &[u8] = &[1];
+        let key3: &[u8] = &[2];
+
+        let val: &[u8] = &[0];
+
+        assert!(cask.put(key1, val).is_ok());
+        assert!(cask.put(key2, val).is_ok());
+        assert!(cask.put(key3, val).is_ok());
+        assert!(cask.delete(key3).is_ok());
+
+        let mut keys = cask.keys();
+
+        //Keys are not guaranteed to be in order.
+        keys.sort();
+
+        assert_eq!(keys.len(), 2);
+
+        assert_eq!(keys[0], key1);
+        assert_eq!(keys[1], key2);
+
+        assert!(fs::remove_dir_all("test.db").is_ok());
     }
 }
 
