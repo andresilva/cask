@@ -9,7 +9,7 @@ license = "MIT"
 keywords = ["database", "db", "key-value", "kv"]
 
 [dependencies]
-byteorder = "~1.2.0"
+byteorder = "~1.4.0"
 fs2 = "~0.4.1"
 lazy_static = "~0.2.8"
 log = "~0.3.7"
